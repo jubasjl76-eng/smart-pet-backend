@@ -20,6 +20,7 @@ import authRoutes from './routes/auth.js';
 import deviceRoutes from './routes/devices.js';
 import scheduleRoutes from './routes/schedules.js';
 import eventRoutes from './routes/events.js';
+import collarRoutes from './routes/collar.js';
 import { auth, optionalAuth } from './middleware/auth.js';
 
 // Load environment variables
@@ -71,6 +72,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/devices', auth, deviceRoutes);
 app.use('/api/schedules', auth, scheduleRoutes);
 app.use('/api/events', auth, eventRoutes);
+app.use('/api/collar', auth, collarRoutes);
 
 // Dashboard stats (protected)
 app.get('/api/stats', auth, async (req: Request, res: Response) => {

@@ -1,9 +1,15 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
+export type DeviceType = 'feeder' | 'water' | 'collar';
+export type DeviceStatus = 'online' | 'offline' | 'low_battery';
+
 export interface IDevice extends Document {
   userId: mongoose.Types.ObjectId;
-  type: 'feeder' | 'water';
+  type: DeviceType;
   name: string;
+  deviceId: string; // Hardware ID (unique)
+  
+  // Feeder/Water fields
   foodLevel?: number;
   waterLevel?: number;
   isLowFood?: boolean;
@@ -11,10 +17,22 @@ export interface IDevice extends Document {
   tds?: number;
   temperature?: number;
   waterQuality?: number;
+  
+  // Common fields
   wifiRssi: number;
   uptimeMs: number;
   isOnline: boolean;
   lastSeen: Date;
+  
+  // Collar-specific fields
+  battery?: number;
+  status?: DeviceStatus;
+  firmware?: string;
+  settings?: {
+    trackingInterval: number;
+    sleepMode: boolean;
+  };
+  
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,7 +46,7 @@ const deviceSchema = new Schema<IDevice>({
   },
   type: {
     type: String,
-    enum: ['feeder', 'water'],
+    enum: ['feeder', 'water', 'collar'],
     required: true,
   },
   name: {
@@ -36,6 +54,13 @@ const deviceSchema = new Schema<IDevice>({
     required: true,
     trim: true,
   },
+  deviceId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    index: true,
+  },
+  // Feeder/Water fields
   foodLevel: {
     type: Number,
     min: 0,
@@ -69,6 +94,7 @@ const deviceSchema = new Schema<IDevice>({
     enum: [0, 1, 2],
     default: 0,
   },
+  // Common fields
   wifiRssi: {
     type: Number,
     default: 0,
@@ -85,11 +111,37 @@ const deviceSchema = new Schema<IDevice>({
     type: Date,
     default: Date.now,
   },
+  // Collar-specific fields
+  battery: {
+    type: Number,
+    min: 0,
+    max: 100,
+  },
+  status: {
+    type: String,
+    enum: ['online', 'offline', 'low_battery'],
+    default: 'offline',
+  },
+  firmware: {
+    type: String,
+    default: '1.0.0',
+  },
+  settings: {
+    trackingInterval: {
+      type: Number,
+      default: 60,
+    },
+    sleepMode: {
+      type: Boolean,
+      default: false,
+    },
+  },
 }, {
   timestamps: true,
 });
 
-// Index for efficient queries
+// Indexes
 deviceSchema.index({ userId: 1, type: 1 });
+deviceSchema.index({ userId: 1, status: 1 });
 
 export const Device = mongoose.model<IDevice>('Device', deviceSchema);
