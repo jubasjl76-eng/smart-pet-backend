@@ -1,44 +1,49 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-// Alert Types
-export type AlertType = 'low_battery' | 'zone_exit' | 'zone_enter' | 'device_offline' | 'speed_alert';
-
-// Alert Schema - notifications for dog collar events
 export interface IAlert extends Document {
-  userId: mongoose.Types.ObjectId;
-  dogId: mongoose.Types.ObjectId;
-  deviceId: mongoose.Types.ObjectId;
-  type: AlertType;
+  alertId: string;
+  kennelId: string;
+  deviceId?: string;
+  alertType: 'temperature_high' | 'temperature_low' | 'door_unexpected' | 'device_offline' | 'water_low' | 'food_low' | 'battery_low' | 'motion_detected' | 'geofence_breach';
+  severity: 'info' | 'warning' | 'critical';
   title: string;
   message: string;
-  latitude?: number;
-  longitude?: number;
-  read: boolean;
+  acknowledged: boolean;
+  acknowledgedAt?: Date;
+  acknowledgedBy?: mongoose.Types.ObjectId;
+  resolved: boolean;
+  resolvedAt?: Date;
+  metadata?: Record<string, any>;
   createdAt: Date;
 }
 
 const alertSchema = new Schema<IAlert>({
-  userId: {
-    type: Schema.Types.ObjectId,
-    ref: 'User',
+  alertId: {
+    type: String,
     required: true,
+    unique: true,
     index: true,
   },
-  dogId: {
-    type: Schema.Types.ObjectId,
-    ref: 'Dog',
+  kennelId: {
+    type: String,
     required: true,
     index: true,
   },
   deviceId: {
-    type: Schema.Types.ObjectId,
-    ref: 'Device',
-    required: true,
-  },
-  type: {
     type: String,
-    enum: ['low_battery', 'zone_exit', 'zone_enter', 'device_offline', 'speed_alert'],
+    index: true,
+  },
+  alertType: {
+    type: String,
+    enum: ['temperature_high', 'temperature_low', 'door_unexpected', 'device_offline', 'water_low', 'food_low', 'battery_low', 'motion_detected', 'geofence_breach'],
     required: true,
+    index: true,
+  },
+  severity: {
+    type: String,
+    enum: ['info', 'warning', 'critical'],
+    required: true,
+    index: true,
   },
   title: {
     type: String,
@@ -48,23 +53,34 @@ const alertSchema = new Schema<IAlert>({
     type: String,
     required: true,
   },
-  latitude: {
-    type: Number,
-  },
-  longitude: {
-    type: Number,
-  },
-  read: {
+  acknowledged: {
     type: Boolean,
     default: false,
     index: true,
+  },
+  acknowledgedAt: {
+    type: Date,
+  },
+  acknowledgedBy: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+  },
+  resolved: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
+  resolvedAt: {
+    type: Date,
+  },
+  metadata: {
+    type: Schema.Types.Mixed,
   },
 }, {
   timestamps: true,
 });
 
-// Indexes
-alertSchema.index({ userId: 1, read: 1, createdAt: -1 });
-alertSchema.index({ userId: 1, dogId: 1, createdAt: -1 });
+alertSchema.index({ kennelId: 1, acknowledged: 1, resolved: 1 });
+alertSchema.index({ createdAt: -1 });
 
 export const Alert = mongoose.model<IAlert>('Alert', alertSchema);
