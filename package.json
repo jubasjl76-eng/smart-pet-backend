@@ -1,7 +1,7 @@
 {
   "name": "smart-pet-backend",
-  "version": "1.0.0",
-  "description": "Unified Backend API for Smart Pet Ecosystem",
+  "version": "3.0.0",
+  "description": "Unified Backend API for Smart Pet Ecosystem - Edge + Cloud",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -17,8 +17,8 @@
     "express": "^5.2.1",
     "express-validator": "^7.3.1",
     "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.3.0",
     "mqtt": "^5.15.0",
+    "pg": "^8.13.1",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
@@ -28,6 +28,7 @@
     "@types/express-validator": "^2.20.33",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.10",
     "@types/uuid": "^10.0.0",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",
