@@ -1,41 +1,28 @@
 import { Response } from 'express';
-import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
-import { query, queryOne } from '../database/index.js';
+import { randomBytes } from 'node:crypto';
 import { AuthRequest } from '../middleware/auth.js';
-import { isFoodLow, publishFeedAndWait } from '../services/feederMqtt.js';
+import { execute, query, queryOne } from '../database/index.js';
+import { presentDevice } from '../services/statusIngest.js';
+import { executeFeedNow } from '../services/feedNow.js';
+import { getFeederBus } from '../services/feederMqtt.js';
+import {
+  buildLwtPayload,
+  commandTopic,
+  mqttUsername,
+  statusTopic,
+} from '../mqtt/contract.js';
+import type { DeviceRow } from '../types.js';
 
-function mapDevice(row: any) {
-  if (!row) return null;
-  const status = row.status || (row.is_online ? 'online' : 'offline');
-  const foodLevel = row.food_level ?? row.latest_value ?? null;
-  return {
-    id: row.id,
-    _id: row.id,
-    deviceId: row.device_id,
-    device_id: row.device_id,
-    name: row.name,
-    type: row.device_type,
-    device_type: row.device_type,
-    kennelId: row.kennel_id,
-    status,
-    isOnline: status === 'online',
-    is_online: status === 'online',
-    foodLevel,
-    food_level: foodLevel,
-    lastFeed: row.last_feed,
-    lastSeen: row.last_seen,
-    isFoodLow: isFoodLow(foodLevel),
-  };
-}
+const SIMULATED_FEEDER_ID = 'feeder-sim-001';
 
 export const getAllDevices = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const rows = await query<any>(
+    const devices = await query<DeviceRow>(
       `SELECT * FROM devices WHERE user_id = $1 ORDER BY created_at DESC`,
       [req.user!.id]
     );
-    res.json({ devices: rows.map(mapDevice) });
+    res.json({ devices: devices.map(presentDevice) });
   } catch {
     res.status(500).json({ error: 'Failed to fetch devices' });
   }
@@ -43,156 +30,174 @@ export const getAllDevices = async (req: AuthRequest, res: Response): Promise<vo
 
 export const getDeviceById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const row = await queryOne<any>(
-      `SELECT * FROM devices WHERE user_id = $1 AND (id::text = $2 OR device_id = $2)`,
-      [req.user!.id, req.params.id]
+    const device = await queryOne<DeviceRow>(
+      `SELECT * FROM devices WHERE (id::text = $1 OR device_id = $1) AND user_id = $2`,
+      [req.params.id, req.user!.id]
     );
-    if (!row) {
+    if (!device) {
       res.status(404).json({ error: 'Device not found' });
       return;
     }
-    res.json({ device: mapDevice(row) });
+    res.json({ device: presentDevice(device) });
   } catch {
     res.status(500).json({ error: 'Failed to fetch device' });
   }
 };
 
-export const createDevice = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getDeviceLevel = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { name, type, kennelId } = req.body;
-    const deviceId = `${type || 'feeder'}-${crypto.randomBytes(3).toString('hex')}`;
-    const rows = await query<any>(
-      `INSERT INTO devices (user_id, device_id, device_type, name, kennel_id, status, is_online)
-       VALUES ($1, $2, $3, $4, $5, 'offline', false) RETURNING *`,
-      [req.user!.id, deviceId, type || 'feeder', name, kennelId || req.user!.id]
+    const device = await queryOne<DeviceRow>(
+      `SELECT * FROM devices WHERE (id::text = $1 OR device_id = $1) AND user_id = $2`,
+      [req.params.id, req.user!.id]
     );
-    res.status(201).json({ device: mapDevice(rows[0]) });
+    if (!device) {
+      res.status(404).json({ error: 'Device not found' });
+      return;
+    }
+    const presented = presentDevice(device);
+    res.json({
+      deviceId: presented.deviceId,
+      kennelId: presented.kennelId,
+      status: presented.status,
+      foodLevel: presented.foodLevel,
+      isFoodLow: presented.isFoodLow,
+      lastFeed: presented.lastFeed,
+    });
   } catch {
-    res.status(500).json({ error: 'Failed to create device' });
+    res.status(500).json({ error: 'Failed to fetch food level' });
   }
 };
 
-export const claimDevice = async (req: AuthRequest, res: Response): Promise<void> => {
+export const claimFeeder = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const code = String(req.body.code || req.body.deviceId || '').trim();
-    const name = req.body.name || 'Feeder';
-    if (!code) {
-      res.status(400).json({ error: 'code is required' });
+    const user = req.user!;
+    const existing = await queryOne<DeviceRow>(
+      `SELECT * FROM devices WHERE user_id = $1 AND device_type = 'feeder'`,
+      [user.id]
+    );
+    if (existing) {
+      res.status(409).json({ error: 'Owner already has a claimed feeder' });
       return;
     }
-    let row = await queryOne<any>(
-      `SELECT * FROM devices WHERE claim_code = $1 OR device_id = $1`,
-      [code]
-    );
-    const kennelId = String(req.body.kennelId || req.user!.id);
-    if (!row) {
-      const inserted = await query<any>(
-        `INSERT INTO devices (user_id, device_id, device_type, name, kennel_id, claim_code, status, is_online)
-         VALUES ($1, $2, 'feeder', $3, $4, $2, 'offline', false) RETURNING *`,
-        [req.user!.id, code, name, kennelId]
-      );
-      row = inserted[0];
-    } else if (row.user_id && row.user_id !== req.user!.id) {
+
+    const deviceId = String(req.body.deviceId || SIMULATED_FEEDER_ID);
+    const name = String(req.body.name || 'Simulated Feeder');
+    let kennelId = user.kennelId;
+    if (!kennelId) {
+      kennelId = `kennel-${user.id.slice(0, 8)}`;
+      await execute('UPDATE users SET kennel_id = $1 WHERE id = $2', [kennelId, user.id]);
+    }
+
+    const taken = await queryOne<DeviceRow>('SELECT * FROM devices WHERE device_id = $1', [deviceId]);
+    if (taken && taken.user_id && taken.user_id !== user.id) {
       res.status(409).json({ error: 'Device already claimed' });
       return;
-    } else {
-      await query(
-        `UPDATE devices SET user_id = $1, name = COALESCE($2, name), kennel_id = $3, updated_at = NOW() WHERE id = $4`,
-        [req.user!.id, name, kennelId, row.id]
-      );
-      row = await queryOne<any>(`SELECT * FROM devices WHERE id = $1`, [row.id]);
     }
-    const secret = crypto.randomBytes(24).toString('base64url');
+
+    const secret = randomBytes(24).toString('base64url');
     const hash = await bcrypt.hash(secret, 10);
-    const mqttUser = `device:${row.device_id}`;
-    await query(
-      `UPDATE devices SET mqtt_username = $1, mqtt_password_hash = $2, updated_at = NOW() WHERE id = $3`,
-      [mqttUser, hash, row.id]
-    );
-    const device = mapDevice(await queryOne<any>(`SELECT * FROM devices WHERE id = $1`, [row.id]));
-    res.json({
-      device,
+    const username = mqttUsername(deviceId);
+
+    if (taken) {
+      await execute(
+        `UPDATE devices
+         SET user_id = $1, kennel_id = $2, name = $3, device_type = 'feeder',
+             mqtt_username = $4, mqtt_password_hash = $5, claimed_at = NOW(), updated_at = NOW()
+         WHERE device_id = $6`,
+        [user.id, kennelId, name, username, hash, deviceId]
+      );
+    } else {
+      await execute(
+        `INSERT INTO devices (user_id, device_id, device_type, name, kennel_id, mqtt_username, mqtt_password_hash, status, is_online, claimed_at)
+         VALUES ($1, $2, 'feeder', $3, $4, $5, $6, 'offline', false, NOW())`,
+        [user.id, deviceId, name, kennelId, username, hash]
+      );
+    }
+
+    const device = await queryOne<DeviceRow>('SELECT * FROM devices WHERE device_id = $1', [deviceId]);
+    res.status(201).json({
+      device: presentDevice(device!),
       mqtt: {
-        username: mqttUser,
+        username,
         password: secret,
-        topicCommand: `kennel/${kennelId}/feeder/${row.device_id}/command`,
-        topicStatus: `kennel/${kennelId}/feeder/${row.device_id}/status`,
+        commandTopic: commandTopic(kennelId, deviceId),
+        statusTopic: statusTopic(kennelId, deviceId),
+        commandQos: 2,
+        statusQos: 1,
+        statusRetained: true,
+        lwt: {
+          topic: statusTopic(kennelId, deviceId),
+          retained: true,
+          payload: buildLwtPayload(deviceId, kennelId),
+        },
+        acl: {
+          subscribe: [commandTopic(kennelId, deviceId)],
+          publish: [statusTopic(kennelId, deviceId)],
+          deny: ['kennel/+', '#'],
+        },
       },
     });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Failed to claim device' });
+  } catch (error) {
+    console.error('Claim error:', error);
+    res.status(500).json({ error: 'Failed to claim feeder' });
   }
-};
-
-export const updateDevice = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const row = await queryOne<any>(
-      `UPDATE devices SET name = COALESCE($1, name), updated_at = NOW()
-       WHERE user_id = $2 AND (id::text = $3 OR device_id = $3) RETURNING *`,
-      [req.body.name || null, req.user!.id, req.params.id]
-    );
-    if (!row) {
-      res.status(404).json({ error: 'Device not found' });
-      return;
-    }
-    res.json({ device: mapDevice(row) });
-  } catch {
-    res.status(500).json({ error: 'Failed to update device' });
-  }
-};
-
-export const deleteDevice = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const row = await queryOne<any>(
-      `DELETE FROM devices WHERE user_id = $1 AND (id::text = $2 OR device_id = $2) RETURNING id`,
-      [req.user!.id, req.params.id]
-    );
-    if (!row) {
-      res.status(404).json({ error: 'Device not found' });
-      return;
-    }
-    res.json({ success: true });
-  } catch {
-    res.status(500).json({ error: 'Failed to delete device' });
-  }
-};
-
-export const updateDeviceStatus = async (req: AuthRequest, res: Response): Promise<void> => {
-  res.status(405).json({ error: 'Use MQTT retained status; HTTP status ingest is not the product path' });
 };
 
 export const triggerFeed = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const row = await queryOne<any>(
-      `SELECT * FROM devices WHERE user_id = $1 AND (id::text = $2 OR device_id = $2)`,
-      [req.user!.id, req.params.id]
+    const device = await queryOne<DeviceRow>(
+      `SELECT * FROM devices WHERE (id::text = $1 OR device_id = $1) AND user_id = $2`,
+      [req.params.id, req.user!.id]
     );
-    if (!row) {
+    if (!device) {
       res.status(404).json({ error: 'Device not found' });
       return;
     }
-    if (row.device_type !== 'feeder') {
+    if (device.device_type !== 'feeder') {
       res.status(400).json({ error: 'Device is not a feeder' });
       return;
     }
-    const amount = Number(req.body?.amount ?? 100);
-    const kennelId = row.kennel_id || req.user!.id;
-    const ack = await publishFeedAndWait(kennelId, row.device_id, amount);
+
+    const amount = Number(req.body?.amount ?? req.body?.params?.amount ?? 1);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      res.status(400).json({ error: 'params.amount must be a positive number' });
+      return;
+    }
+
+    const bus = getFeederBus();
+    if (!bus) {
+      res.status(503).json({ error: 'MQTT command path unavailable' });
+      return;
+    }
+
+    const status = await executeFeedNow(device, amount, bus);
     res.json({
       success: true,
-      acked: true,
-      status: ack.status,
-      foodLevel: ack.foodLevel,
-      message: 'Device ack received',
+      message: 'Feed acknowledged by device status',
+      status,
     });
   } catch (error: any) {
-    const msg = error?.message || 'Failed to trigger feeding';
-    const timeout = /timeout/i.test(msg);
-    res.status(timeout ? 504 : 500).json({ success: false, acked: false, error: msg });
+    if (String(error?.message || '').includes('did not ack')) {
+      res.status(504).json({ error: 'Device did not ack feed via status' });
+      return;
+    }
+    console.error('Feed error:', error);
+    res.status(500).json({ error: 'Failed to trigger feeding' });
   }
 };
 
-export const triggerDispense = async (_req: AuthRequest, res: Response): Promise<void> => {
-  res.status(501).json({ error: 'Water loop is out of scope this sprint' });
+export const getStats = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const devices = await query<DeviceRow>('SELECT * FROM devices WHERE user_id = $1', [userId]);
+    const schedules = await query<any>('SELECT * FROM schedules WHERE user_id = $1', [userId]);
+    res.json({
+      totalDevices: devices.length,
+      feeders: devices.filter((d) => d.device_type === 'feeder').length,
+      totalSchedules: schedules.length,
+      activeSchedules: schedules.filter((s) => s.enabled).length,
+    });
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch stats' });
+  }
 };
