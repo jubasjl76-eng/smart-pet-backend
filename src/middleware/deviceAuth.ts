@@ -21,6 +21,10 @@ export function parseDeviceBasic(authorization: string | undefined): { username:
   if (!authorization || !authorization.startsWith('Basic ')) return null;
   try {
     const decoded = Buffer.from(authorization.slice(6), 'base64').toString('utf8');
+    const deviceCred = /^device:([^:]+):(.*)$/.exec(decoded);
+    if (deviceCred) {
+      return { username: `device:${deviceCred[1]}`, password: deviceCred[2] };
+    }
     const idx = decoded.indexOf(':');
     if (idx < 0) return null;
     return { username: decoded.slice(0, idx), password: decoded.slice(idx + 1) };
