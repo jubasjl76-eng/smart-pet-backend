@@ -1,130 +1,66 @@
-import { Request, Response } from 'express';
-import { Event, Device } from '../models/index.js';
+import { Response } from 'express';
+import { AuthRequest } from '../middleware/auth.js';
+import { query, queryOne } from '../database/index.js';
 
-export const getAllEvents = async (req: Request, res: Response): Promise<void> => {
+export const getAllEvents = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { device_id, limit = 50, offset = 0 } = req.query;
-    
-    const query: any = { userId: (req as any).user._id };
-    if (device_id) query.deviceId = device_id;
-    
-    const events = await Event.find(query)
-      .populate('deviceId', 'name type')
-      .sort({ timestamp: -1 })
-      .skip(Number(offset))
-      .limit(Number(limit));
-    
-    const total = await Event.countDocuments(query);
-    
-    res.json({ events, total, limit: Number(limit), offset: Number(offset) });
-  } catch (error) {
+    const params: any[] = [req.user!.id];
+    let sql = `SELECT * FROM device_events WHERE user_id = $1`;
+    if (device_id) {
+      params.push(device_id);
+      sql += ` AND device_id = $2`;
+    }
+    sql += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(Number(limit), Number(offset));
+    const events = await query(sql, params);
+    res.json({ events, limit: Number(limit), offset: Number(offset) });
+  } catch {
     res.status(500).json({ error: 'Failed to fetch events' });
   }
 };
 
-export const getEventById = async (req: Request, res: Response): Promise<void> => {
+export const getEventById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const event = await Event.findOne({ 
-      _id: req.params.id,
-      userId: (req as any).user._id 
-    }).populate('deviceId', 'name type');
-    
+    const event = await queryOne(
+      `SELECT * FROM device_events WHERE id = $1 AND user_id = $2`,
+      [req.params.id, req.user!.id]
+    );
     if (!event) {
       res.status(404).json({ error: 'Event not found' });
       return;
     }
-    
     res.json({ event });
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: 'Failed to fetch event' });
   }
 };
 
-export const createEvent = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { device_id, type, action, success, message } = req.body;
-    
-    const device = await Device.findOne({ 
-      _id: device_id,
-      userId: (req as any).user._id 
-    });
-    
-    if (!device) {
-      res.status(404).json({ error: 'Device not found' });
-      return;
-    }
-    
-    const event = new Event({
-      userId: (req as any).user._id,
-      deviceId: device_id,
-      type: type || 'api',
-      action,
-      success: success !== false,
-      message,
-    });
-    
-    await event.save();
-    
-    res.status(201).json({ event });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to log event' });
-  }
+export const createEvent = async (req: AuthRequest, res: Response): Promise<void> => {
+  res.status(405).json({ error: 'Manual event insert is not a product path; Feed Now succeeds on device ack + status' });
 };
 
-export const getEventStats = async (req: Request, res: Response): Promise<void> => {
+export const getEventStats = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).user._id;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const weekAgo = new Date(today);
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    
-    const todayEvents = await Event.countDocuments({
-      userId,
-      timestamp: { $gte: today },
-    });
-    
-    const weekEvents = await Event.countDocuments({
-      userId,
-      timestamp: { $gte: weekAgo },
-    });
-    
-    const byType = await Event.aggregate([
-      { $match: { userId } },
-      { $group: { _id: '$action', count: { $sum: 1 } } },
-    ]);
-    
-    const byDevice = await Event.aggregate([
-      { $match: { userId } },
-      { $group: { _id: '$deviceId', count: { $sum: 1 } } },
-      { $lookup: { from: 'devices', localField: '_id', foreignField: '_id', as: 'device' } },
-      { $unwind: '$device' },
-      { $project: { name: '$device.name', type: '$device.type', count: 1 } },
-    ]);
-    
-    res.json({
-      today: todayEvents,
-      thisWeek: weekEvents,
-      byType: byType.reduce((acc, curr) => ({ ...acc, [curr._id]: curr.count }), {}),
-      byDevice,
-    });
-  } catch (error) {
+    const row = await queryOne<any>(
+      `SELECT COUNT(*)::int as count FROM device_events WHERE user_id = $1 AND created_at > NOW() - INTERVAL '24 hours'`,
+      [req.user!.id]
+    );
+    res.json({ today: row?.count || 0 });
+  } catch {
     res.status(500).json({ error: 'Failed to fetch statistics' });
   }
 };
 
-export const getRecentEvents = async (req: Request, res: Response): Promise<void> => {
+export const getRecentEvents = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { limit = 10 } = req.query;
-    
-    const events = await Event.find({ userId: (req as any).user._id })
-      .populate('deviceId', 'name type')
-      .sort({ timestamp: -1 })
-      .limit(Number(limit));
-    
+    const events = await query(
+      `SELECT * FROM device_events WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`,
+      [req.user!.id, Number(limit)]
+    );
     res.json({ events });
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: 'Failed to fetch recent events' });
   }
 };

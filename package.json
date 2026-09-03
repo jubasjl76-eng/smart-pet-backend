@@ -1,14 +1,14 @@
 {
   "name": "smart-pet-backend",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Unified Backend API for Smart Pet Ecosystem - Edge + Cloud",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "build": "tsc",
-    "test": "vitest",
-    "mqtt": "tsx src/services/mqttConsumer.ts"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
