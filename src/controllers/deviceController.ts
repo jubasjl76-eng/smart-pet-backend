@@ -7,8 +7,10 @@ import { isFoodLow, publishFeedAndWait } from '../services/feederMqtt.js';
 
 function mapDevice(row: any) {
   if (!row) return null;
-  const status = row.status || (row.is_online ? 'online' : 'offline');
-  const foodLevel = row.food_level ?? row.latest_value ?? null;
+  const statusRaw = row.status || (row.is_online ? 'online' : 'offline');
+  const online = statusRaw === 'online';
+  const storedLevel = row.food_level ?? row.latest_value ?? null;
+  const foodLevel = online ? storedLevel : null;
   return {
     id: row.id,
     _id: row.id,
@@ -18,14 +20,14 @@ function mapDevice(row: any) {
     type: row.device_type,
     device_type: row.device_type,
     kennelId: row.kennel_id,
-    status,
-    isOnline: status === 'online',
-    is_online: status === 'online',
+    status: online ? 'online' : 'offline',
+    isOnline: online,
+    is_online: online,
     foodLevel,
     food_level: foodLevel,
     lastFeed: row.last_feed,
     lastSeen: row.last_seen,
-    isFoodLow: isFoodLow(foodLevel),
+    foodLow: online ? isFoodLow(storedLevel) : null,
   };
 }
 
@@ -57,6 +59,29 @@ export const getDeviceById = async (req: AuthRequest, res: Response): Promise<vo
   }
 };
 
+export const getDeviceLevels = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const row = await queryOne<any>(
+      `SELECT * FROM devices WHERE user_id = $1 AND (id::text = $2 OR device_id = $2)`,
+      [req.user!.id, req.params.id]
+    );
+    if (!row) {
+      res.status(404).json({ error: 'Device not found' });
+      return;
+    }
+    const device = mapDevice(row);
+    res.json({
+      deviceId: device.deviceId,
+      status: device.status,
+      foodLevel: device.foodLevel,
+      foodLow: device.foodLow,
+      current: device.isOnline,
+    });
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch levels' });
+  }
+};
+
 export const createDevice = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { name, type, kennelId } = req.body;
@@ -77,7 +102,7 @@ export const claimDevice = async (req: AuthRequest, res: Response): Promise<void
     const code = String(req.body.code || req.body.deviceId || '').trim();
     const name = req.body.name || 'Feeder';
     if (!code) {
-      res.status(400).json({ error: 'code is required' });
+      res.status(400).json({ error: 'deviceId is required' });
       return;
     }
     let row = await queryOne<any>(
@@ -110,17 +135,20 @@ export const claimDevice = async (req: AuthRequest, res: Response): Promise<void
       [mqttUser, hash, row.id]
     );
     const device = mapDevice(await queryOne<any>(`SELECT * FROM devices WHERE id = $1`, [row.id]));
-    res.json({
+    res.status(201).json({
       device,
       mqtt: {
         username: mqttUser,
         password: secret,
-        topicCommand: `kennel/${kennelId}/feeder/${row.device_id}/command`,
-        topicStatus: `kennel/${kennelId}/feeder/${row.device_id}/status`,
+        topics: {
+          command: `kennel/${kennelId}/feeder/${row.device_id}/command`,
+          status: `kennel/${kennelId}/feeder/${row.device_id}/status`,
+        },
+        acl: { sub: 'command only', pub: 'status only' },
       },
     });
   } catch (e) {
-    console.error(e);
+    console.error('claim failed');
     res.status(500).json({ error: 'Failed to claim device' });
   }
 };
@@ -159,7 +187,7 @@ export const deleteDevice = async (req: AuthRequest, res: Response): Promise<voi
 };
 
 export const updateDeviceStatus = async (req: AuthRequest, res: Response): Promise<void> => {
-  res.status(405).json({ error: 'Use MQTT retained status; HTTP status ingest is not the product path' });
+  res.status(403).json({ error: 'closed', message: 'Use MQTT retained status; HTTP status ingest is not the product path' });
 };
 
 export const triggerFeed = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -181,18 +209,17 @@ export const triggerFeed = async (req: AuthRequest, res: Response): Promise<void
     const ack = await publishFeedAndWait(kennelId, row.device_id, amount);
     res.json({
       success: true,
+      ack: true,
       acked: true,
-      status: ack.status,
-      foodLevel: ack.foodLevel,
-      message: 'Device ack received',
+      status: ack,
     });
   } catch (error: any) {
     const msg = error?.message || 'Failed to trigger feeding';
     const timeout = /timeout/i.test(msg);
-    res.status(timeout ? 504 : 500).json({ success: false, acked: false, error: msg });
+    res.status(timeout ? 504 : 500).json({ success: false, ack: false, acked: false, error: msg });
   }
 };
 
 export const triggerDispense = async (_req: AuthRequest, res: Response): Promise<void> => {
-  res.status(501).json({ error: 'Water loop is out of scope this sprint' });
+  res.status(404).json({ error: 'Not found' });
 };
