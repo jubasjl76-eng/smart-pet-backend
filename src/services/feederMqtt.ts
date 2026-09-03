@@ -51,7 +51,7 @@ export async function applyStatus(p: StatusPayload): Promise<void> {
     `UPDATE devices SET
        is_online = $1,
        status = $2,
-       last_seen = NOW(),
+       last_seen = CASE WHEN $1 THEN NOW() ELSE last_seen END,
        food_level = COALESCE($3, food_level),
        latest_value = COALESCE($3, latest_value),
        last_feed = COALESCE($4, last_feed),
@@ -67,7 +67,7 @@ export function startFeederMqtt(): void {
   const url = process.env.MQTT_URL || 'mqtt://localhost:1883';
   const opts: mqtt.IClientOptions = {
     clientId: process.env.MQTT_CLIENT_ID || 'smart-pet-backend',
-    username: process.env.MQTT_USERNAME || undefined,
+    username: process.env.MQTT_USERNAME || process.env.MQTT_USER || undefined,
     password: process.env.MQTT_PASSWORD || undefined,
     reconnectPeriod: 5000,
     clean: false,
@@ -114,7 +114,12 @@ export function waitForStatusAck(deviceId: string, sinceMs: number, timeoutMs = 
     }, timeoutMs);
     function onStatus(p: StatusPayload) {
       if (p.status !== 'online') return;
-      if (p.timestamp && p.timestamp < sinceMs - 1000) return;
+      const lastFeed = p.lastFeed != null ? Number(p.lastFeed) : NaN;
+      if (Number.isFinite(lastFeed)) {
+        if (lastFeed < sinceMs) return;
+      } else if (p.timestamp && p.timestamp < sinceMs) {
+        return;
+      }
       clearTimeout(timer);
       bus.off(key, onStatus);
       resolve(p);

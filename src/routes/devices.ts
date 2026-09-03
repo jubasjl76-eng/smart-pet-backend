@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import * as deviceController from '../controllers/deviceController.js';
-import { auth } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -14,19 +13,20 @@ const validate = (req: Request, res: Response, next: Function): void => {
   next();
 };
 
-router.get('/', auth, deviceController.getAllDevices);
-router.post('/claim', auth, deviceController.claimDevice);
-router.get('/:id', auth, deviceController.getDeviceById);
-router.post('/', auth, [
+router.get('/', deviceController.getAllDevices);
+router.post('/claim', deviceController.claimDevice);
+router.post('/', [
   body('name').trim().notEmpty(),
   body('type').isIn(['feeder', 'water']),
 ], validate, deviceController.createDevice);
-router.put('/:id', auth, [
+router.get('/:id/levels', deviceController.getDeviceLevels);
+router.get('/:id', deviceController.getDeviceById);
+router.put('/:id', [
   body('name').optional().trim().notEmpty(),
 ], validate, deviceController.updateDevice);
-router.delete('/:id', auth, deviceController.deleteDevice);
-router.post('/:id/status', auth, deviceController.updateDeviceStatus);
-router.post('/:id/feed', auth, deviceController.triggerFeed);
-router.post('/:id/dispense', auth, deviceController.triggerDispense);
+router.delete('/:id', deviceController.deleteDevice);
+router.post('/:id/status', deviceController.updateDeviceStatus);
+router.post('/:id/feed', deviceController.triggerFeed);
+router.post('/:id/dispense', deviceController.triggerDispense);
 
 export default router;
