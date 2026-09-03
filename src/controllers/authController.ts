@@ -2,21 +2,16 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { query, queryOne } from '../database/index.js';
 import { generateToken, AuthRequest } from '../middleware/auth.js';
-
-function isLocalhost(req: Request): boolean {
-  const host = (req.hostname || '').toLowerCase();
-  const ip = req.ip || '';
-  return host === 'localhost' || host === '127.0.0.1' || ip === '127.0.0.1' || ip === '::1';
-}
+import { isLocalRegisterAllowed, mapRole } from '../identity/roles.js';
 
 function toJson(user: any) {
-  const role = user.role === 'staff' || user.role === 'admin' ? 'staff' : 'owner';
+  const role = mapRole(user.role);
   return { id: user.id, _id: user.id, email: user.email, name: user.name, role };
 }
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!isLocalhost(req)) {
+    if (!isLocalRegisterAllowed(req)) {
       res.status(403).json({ error: 'Register is localhost-only' });
       return;
     }
@@ -32,7 +27,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       [email, password_hash, name || null]
     );
     const user = rows[0];
-    const token = generateToken(user.id);
+    const token = generateToken(user.id, user.role);
     res.status(201).json({ message: 'User registered successfully', user: toJson(user), token });
   } catch (error) {
     console.error('Registration error:', error);
@@ -40,7 +35,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-export const login = async (req: Request, res: Response): Promise<void> => {
+export const login = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
     const user = await queryOne<any>('SELECT id, email, name, role, password_hash FROM users WHERE email = $1', [email]);
@@ -53,7 +48,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
-    const token = generateToken(user.id);
+    const token = generateToken(user.id, user.role);
     res.json({ message: 'Login successful', user: toJson(user), token });
   } catch (error) {
     console.error('Login error:', error);

@@ -1,6 +1,7 @@
 /**
- * Smart Pet Backend - Unified API (port 3000)
+ * Smart Pet Backend - Unified API (port 3000 only)
  * 24 Sep feeder loop: owner JWT + MQTT command/status on kennel/{kennelId}/feeder/{deviceId}/
+ * mqttConsumer.ts is quarantined and is not started here.
  */
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
@@ -18,14 +19,18 @@ import deviceRoutes from './routes/devices.js';
 import scheduleRoutes from './routes/schedules.js';
 import eventRoutes from './routes/events.js';
 import collarRoutes from './routes/collar.js';
-import { auth } from './middleware/auth.js';
+import { auth, ownerOnly, adminOnly } from './middleware/auth.js';
 import { initializeDatabase, query, queryOne } from './database/index.js';
 import { startFeederMqtt } from './services/feederMqtt.js';
 
 const app: Express = express();
-const PORT = parseInt(process.env.PORT || '3000');
+const PORT = 3000;
+if (process.env.PORT && process.env.PORT !== '3000') {
+  console.warn('[boot] API is locked to port 3000; ignoring PORT=' + process.env.PORT);
+}
 const BACKEND_MODE = (process.env.BACKEND_MODE || 'cloud').toLowerCase();
 
+app.set('trust proxy', false);
 app.use(cors());
 app.use(express.json());
 
@@ -39,28 +44,41 @@ app.get('/health', async (_req: Request, res: Response) => {
     mode: BACKEND_MODE,
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    version: '3.0.0-feeder-loop',
+    version: '3.1.0-feeder-command',
+    port: PORT,
   });
 });
 
-function closed(req: Request, res: Response) {
-  res.status(401).json({ error: 'Closed. Use owner JWT on /api/devices and MQTT status ingest.' });
+function closed(_req: Request, res: Response) {
+  res.status(403).json({
+    error: 'closed',
+    message: 'Device path is MQTT status on kennel/{kennelId}/feeder/{deviceId}/status. Owner JWT is not a device credential. X-API-Key is not a product path.',
+  });
 }
 app.post('/api/devices/ingest', closed);
 app.post('/api/sync/events', closed);
 app.get('/api/devices/state', closed);
+app.post('/api/iot/events', closed);
 app.use('/api/iot', closed);
 
 app.use('/api/auth', authRoutes);
-app.use('/api/devices', auth, deviceRoutes);
-app.use('/api/schedules', auth, scheduleRoutes);
-app.use('/api/events', auth, eventRoutes);
+app.use('/api/devices', auth, ownerOnly, deviceRoutes);
+app.use('/api/schedules', auth, ownerOnly, scheduleRoutes);
+app.use('/api/events', auth, ownerOnly, eventRoutes);
 app.use('/api/collar', auth, collarRoutes);
+
+app.get('/api/admin/ping', auth, adminOnly, (req: Request, res: Response) => {
+  res.json({ ok: true, role: (req as any).user?.role });
+});
 
 app.get('/api/pet', auth, async (req: Request, res: Response) => {
   const userId = (req as any).user?.id;
-  const pet = await queryOne<any>('SELECT id, name FROM pets WHERE user_id = $1 LIMIT 1', [userId]);
-  res.json({ pet: pet || { name: null } });
+  try {
+    const pet = await queryOne<any>('SELECT id, name FROM pets WHERE user_id = $1 LIMIT 1', [userId]);
+    res.json({ pet: pet || { name: null } });
+  } catch {
+    res.status(404).json({ error: 'Not found' });
+  }
 });
 
 app.put('/api/pet', auth, async (req: Request, res: Response) => {
@@ -70,17 +88,21 @@ app.put('/api/pet', auth, async (req: Request, res: Response) => {
     res.status(400).json({ error: 'name required' });
     return;
   }
-  const existing = await queryOne<any>('SELECT id FROM pets WHERE user_id = $1 LIMIT 1', [userId]);
-  if (existing) {
-    const pet = await queryOne<any>('UPDATE pets SET name = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name', [name, existing.id]);
-    res.json({ pet });
-  } else {
-    const pet = (await query<any>('INSERT INTO pets (user_id, name) VALUES ($1, $2) RETURNING id, name', [userId, name]))[0];
-    res.json({ pet });
+  try {
+    const existing = await queryOne<any>('SELECT id FROM pets WHERE user_id = $1 LIMIT 1', [userId]);
+    if (existing) {
+      const pet = await queryOne<any>('UPDATE pets SET name = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name', [name, existing.id]);
+      res.json({ pet });
+    } else {
+      const pet = (await query<any>('INSERT INTO pets (user_id, name) VALUES ($1, $2) RETURNING id, name', [userId, name]))[0];
+      res.json({ pet });
+    }
+  } catch {
+    res.status(404).json({ error: 'Not found' });
   }
 });
 
-app.get('/api/stats', auth, async (req: Request, res: Response) => {
+app.get('/api/stats', auth, ownerOnly, async (req: Request, res: Response) => {
   const userId = (req as any).user?.id;
   try {
     const devices = await query<any>(`SELECT * FROM devices WHERE user_id = $1`, [userId]);
@@ -88,7 +110,6 @@ app.get('/api/stats', auth, async (req: Request, res: Response) => {
     res.json({
       totalDevices: devices.length,
       feeders: devices.filter((d: any) => d.device_type === 'feeder').length,
-      waterDispensers: devices.filter((d: any) => d.device_type === 'water').length,
       totalSchedules: schedules.length,
       activeSchedules: schedules.filter((s: any) => s.enabled).length,
     });
@@ -107,7 +128,11 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Smart Pet API feeder-loop on http://localhost:${PORT} mode=${BACKEND_MODE}`);
+  console.log(`Smart Pet API on http://localhost:${PORT} mode=${BACKEND_MODE}`);
+  console.log('MQTT command: kennel/{kennelId}/feeder/{deviceId}/command QoS 2');
+  console.log('MQTT status:  kennel/{kennelId}/feeder/{deviceId}/status retained QoS 1');
+  console.log('POST /api/devices/claim issues device:<deviceId> MQTT creds once');
+  console.log('POST /api/devices/:id/feed waits for device ack+status');
 });
 
 export default app;
