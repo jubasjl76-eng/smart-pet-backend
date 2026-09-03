@@ -5,6 +5,7 @@
 
 import pg from 'pg';
 import dotenv from 'dotenv';
+import bcrypt from 'bcryptjs';
 
 dotenv.config();
 
@@ -146,6 +147,46 @@ export async function initializeDatabase(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_sync_queue_synced ON sync_queue(synced);
     `);
     
+
+
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'owner';
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS kennel_id VARCHAR(255);
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS food_level FLOAT;
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'offline';
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS mqtt_username VARCHAR(255);
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS mqtt_password_hash VARCHAR(255);
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS claim_code VARCHAR(255);
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_feed BIGINT;
+      ALTER TABLE schedules ADD COLUMN IF NOT EXISTS amount FLOAT DEFAULT 100;
+      CREATE TABLE IF NOT EXISTS pets (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id),
+        name VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    const ownerEmail = process.env.SEED_OWNER_EMAIL || 'owner@localhost';
+    const staffEmail = process.env.SEED_STAFF_EMAIL || 'staff@localhost';
+    const ownerPass = process.env.SEED_OWNER_PASSWORD || 'owner-local-only';
+    const staffPass = process.env.SEED_STAFF_PASSWORD || 'staff-local-only';
+    const ownerHash = await bcrypt.hash(ownerPass, 10);
+    const staffHash = await bcrypt.hash(staffPass, 10);
+    await pool.query(
+      `INSERT INTO users (email, password_hash, name, role)
+       VALUES ($1, $2, 'Owner', 'owner')
+       ON CONFLICT (email) DO NOTHING`,
+      [ownerEmail, ownerHash]
+    );
+    await pool.query(
+      `INSERT INTO users (email, password_hash, name, role)
+       VALUES ($1, $2, 'Staff', 'staff')
+       ON CONFLICT (email) DO NOTHING`,
+      [staffEmail, staffHash]
+    );
+
     console.log('[Database] Tables created successfully');
   } catch (error) {
     console.error('[Database] Error creating tables:', error);
