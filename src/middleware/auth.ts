@@ -1,73 +1,69 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { User, IUser } from '../models/index.js';
+import { getJwtSecret } from '../config.js';
+import { canAdmin, isOwner, mapRole } from '../identity/roles.js';
+import { queryOne } from '../database/index.js';
+import type { AppUser } from '../types.js';
 
 export interface AuthRequest extends Request {
-  user?: IUser;
+  user?: AppUser;
 }
 
-export const JWT_SECRET = process.env.JWT_SECRET || 'smart-pet-secret-key-change-in-production';
+interface JwtPayload {
+  userId: string;
+  role?: string;
+}
 
-// JWT Authentication middleware
+function rowToUser(row: any): AppUser {
+  const mapped = mapRole(row.role) || 'owner';
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name ?? null,
+    role: mapped,
+    kennelId: row.kennel_id ?? null,
+  };
+}
+
 export const auth = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
-    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       res.status(401).json({ error: 'No token provided' });
       return;
     }
-    
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
-    
-    const user = await User.findById(decoded.userId);
-    if (!user) {
+    const decoded = jwt.verify(token, getJwtSecret()) as JwtPayload;
+    const row = await queryOne<any>('SELECT id, email, name, role, kennel_id FROM users WHERE id = $1', [decoded.userId]);
+    if (!row) {
       res.status(401).json({ error: 'User not found' });
       return;
     }
-    
-    req.user = user;
+    req.user = rowToUser(row);
     next();
-  } catch (error) {
+  } catch {
     res.status(401).json({ error: 'Invalid token' });
   }
 };
 
-// Optional auth - doesn't fail if no token
-export const optionalAuth = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
-  try {
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      next();
-      return;
-    }
-    
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
-    
-    const user = await User.findById(decoded.userId);
-    if (user) {
-      req.user = user;
-    }
-    
-    next();
-  } catch {
-    next();
+export const ownerOnly = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  if (!req.user || !isOwner(req.user.role)) {
+    res.status(403).json({ error: 'Owner access required' });
+    return;
   }
+  next();
 };
 
-// Admin only middleware
+/** Staff only. Owner tokens must not pass. */
 export const adminOnly = (req: AuthRequest, res: Response, next: NextFunction): void => {
-  if (!req.user || req.user.role !== 'admin') {
+  if (!req.user || !canAdmin(req.user.role)) {
     res.status(403).json({ error: 'Admin access required' });
     return;
   }
   next();
 };
 
-// Generate JWT token
-export const generateToken = (userId: string): string => {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '30d' });
+export const generateToken = (userId: string, role: string): string => {
+  const mapped = mapRole(role) || 'owner';
+  return jwt.sign({ userId, role: mapped }, getJwtSecret(), { expiresIn: '30d' });
 };
