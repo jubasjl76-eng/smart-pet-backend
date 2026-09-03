@@ -1,13 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { queryOne } from '../database/index.js';
+import { canAdmin, isOwner, mapRole, type Role } from '../identity/roles.js';
 
 export interface AuthUser {
   id: string;
   _id: string;
   email: string;
   name: string | null;
-  role: 'owner' | 'staff' | 'user';
+  role: Role;
 }
 
 export interface AuthRequest extends Request {
@@ -26,11 +27,6 @@ export function getJwtSecret(): string {
   return requireJwtSecret();
 }
 
-function mapRole(role: string | null | undefined): AuthUser['role'] {
-  if (role === 'staff' || role === 'admin') return 'staff';
-  return 'owner';
-}
-
 export const auth = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
@@ -39,7 +35,7 @@ export const auth = async (req: AuthRequest, res: Response, next: NextFunction):
       return;
     }
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, requireJwtSecret()) as { userId: string };
+    const decoded = jwt.verify(token, requireJwtSecret()) as { userId: string; role?: string };
     const user = await queryOne<any>('SELECT id, email, name, role FROM users WHERE id = $1', [decoded.userId]);
     if (!user) {
       res.status(401).json({ error: 'User not found' });
@@ -53,20 +49,22 @@ export const auth = async (req: AuthRequest, res: Response, next: NextFunction):
   }
 };
 
+/** Staff-only. Owner cannot pass adminOnly. */
 export const adminOnly = (req: AuthRequest, res: Response, next: NextFunction): void => {
-  if (!req.user || req.user.role !== 'staff') {
+  if (!req.user || !canAdmin(req.user.role)) {
     res.status(403).json({ error: 'Admin access required' });
     return;
   }
   next();
 };
 
-export const generateToken = (userId: string): string => {
-  return jwt.sign({ userId }, requireJwtSecret(), { expiresIn: '30d' });
+export const generateToken = (userId: string, role?: string): string => {
+  return jwt.sign({ userId, role: mapRole(role) }, requireJwtSecret(), { expiresIn: '30d' });
 };
 
+/** Owner household routes. Staff JWT (same issuer) does not pass. */
 export const ownerOnly = (req: AuthRequest, res: Response, next: NextFunction): void => {
-  if (!req.user || (req.user.role !== 'owner' && req.user.role !== 'staff')) {
+  if (!req.user || !isOwner(req.user.role)) {
     res.status(403).json({ error: 'Owner access required' });
     return;
   }
