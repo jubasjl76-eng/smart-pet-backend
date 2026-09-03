@@ -1,38 +1,24 @@
-import type { AppRole } from '../types.js';
+/**
+ * Product roles: owner (household) and staff (adminOnly).
+ * Legacy JWT/DB values: user → owner, admin → staff.
+ */
+export type Role = 'owner' | 'staff';
 
-/** Map legacy JWT/DB role "user" → owner. Staff stays staff. */
-export function mapRole(role: string | undefined | null): AppRole | null {
-  if (!role) return null;
-  const r = role.toLowerCase();
-  if (r === 'owner' || r === 'user') return 'owner';
-  if (r === 'staff') return 'staff';
-  return null;
+export function mapRole(raw: string | null | undefined): Role {
+  const r = String(raw || 'owner').toLowerCase().trim();
+  if (r === 'staff' || r === 'admin') return 'staff';
+  // user → owner (and any other non-staff value)
+  return 'owner';
 }
 
-export function isOwner(role: string | undefined | null): boolean {
-  return mapRole(role) === 'owner';
+export function isOwnerRole(raw: string | null | undefined): boolean {
+  return mapRole(raw) === 'owner';
 }
 
-export function isStaff(role: string | undefined | null): boolean {
-  return mapRole(role) === 'staff';
+export function isStaffRole(raw: string | null | undefined): boolean {
+  return mapRole(raw) === 'staff';
 }
 
-/** adminOnly: staff only. Owner tokens must not pass. */
-export function canAdmin(role: string | undefined | null): boolean {
-  return isStaff(role);
-}
-
-export function isLocalhostAddress(ipOrHost: string | undefined | null): boolean {
-  if (!ipOrHost) return false;
-  const v = ipOrHost.trim().toLowerCase().replace('::ffff:', '');
-  return v === '127.0.0.1' || v === '::1' || v === 'localhost';
-}
-
-export function isLocalRegisterAllowed(req: {
-  ip?: string;
-  hostname?: string;
-  socket?: { remoteAddress?: string };
-}): boolean {
-  const candidates = [req.ip, req.hostname, req.socket?.remoteAddress];
-  return candidates.some((c) => isLocalhostAddress(c));
+export function isDeviceUsername(username: string | null | undefined): boolean {
+  return typeof username === 'string' && username.startsWith('device:');
 }
