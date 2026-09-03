@@ -1,154 +1,147 @@
 import mqtt, { MqttClient } from 'mqtt';
-import { EventEmitter } from 'events';
-import { query } from '../database/index.js';
+import {
+  COMMAND_QOS,
+  STATUS_QOS,
+  commandTopic,
+  statusTopic,
+  statusWildcard,
+  deriveIsFoodLow,
+} from '../mqtt/contract.js';
+import { ingestStatusMessage } from './statusIngest.js';
+import type { FeederStatusPayload } from '../types.js';
 
-const STATUS_WILDCARD = 'kennel/+/feeder/+/status';
-const ACK_TIMEOUT_MS = 15000;
+export type StatusPredicate = (status: FeederStatusPayload) => boolean;
 
-export type StatusPayload = {
-  deviceId: string;
-  kennelId: string;
-  timestamp: number;
-  status: string;
-  foodLevel?: number;
-  lastFeed?: number;
-};
+export interface FeederBus {
+  publishCommand(topic: string, payload: object): Promise<void>;
+  waitForStatus(deviceId: string, pred: StatusPredicate, timeoutMs: number): Promise<FeederStatusPayload>;
+  connected(): boolean;
+}
 
-const bus = new EventEmitter();
-bus.setMaxListeners(50);
+type Waiter = { pred: StatusPredicate; resolve: (s: FeederStatusPayload) => void; reject: (e: Error) => void; timer: NodeJS.Timeout };
 
+const waiters = new Map<string, Waiter[]>();
+let bus: FeederBus | null = null;
 let client: MqttClient | null = null;
 
-export function commandTopic(kennelId: string, deviceId: string): string {
-  return `kennel/${kennelId}/feeder/${deviceId}/command`;
+export function getFeederBus(): FeederBus | null {
+  return bus;
 }
 
-export function statusTopic(kennelId: string, deviceId: string): string {
-  return `kennel/${kennelId}/feeder/${deviceId}/status`;
+export function setFeederBus(next: FeederBus | null): void {
+  bus = next;
 }
 
-function parseStatus(raw: Buffer): StatusPayload | null {
-  try {
-    const p = JSON.parse(raw.toString());
-    if (!p || !p.deviceId || !p.kennelId) return null;
-    return {
-      deviceId: String(p.deviceId),
-      kennelId: String(p.kennelId),
-      timestamp: Number(p.timestamp || 0),
-      status: String(p.status || 'offline'),
-      foodLevel: p.foodLevel !== undefined ? Number(p.foodLevel) : undefined,
-      lastFeed: p.lastFeed !== undefined ? Number(p.lastFeed) : undefined,
-    };
-  } catch {
-    return null;
+export function notifyStatus(payload: FeederStatusPayload): void {
+  const list = waiters.get(payload.deviceId);
+  if (!list?.length) return;
+  const remaining: Waiter[] = [];
+  for (const w of list) {
+    if (w.pred(payload)) {
+      clearTimeout(w.timer);
+      w.resolve(payload);
+    } else {
+      remaining.push(w);
+    }
   }
+  if (remaining.length) waiters.set(payload.deviceId, remaining);
+  else waiters.delete(payload.deviceId);
 }
 
-export async function applyStatus(p: StatusPayload): Promise<void> {
-  const online = p.status === 'online';
-  const food = p.status === 'offline' || p.foodLevel === undefined ? null : p.foodLevel;
-  await query(
-    `UPDATE devices SET
-       is_online = $1,
-       status = $2,
-       last_seen = NOW(),
-       food_level = COALESCE($3, food_level),
-       latest_value = COALESCE($3, latest_value),
-       last_feed = COALESCE($4, last_feed),
-       kennel_id = COALESCE(kennel_id, $5),
-       updated_at = NOW()
-     WHERE device_id = $6`,
-    [online, online ? 'online' : 'offline', food, p.lastFeed ?? null, p.kennelId, p.deviceId]
-  );
-  bus.emit(`status:${p.deviceId}`, p);
-}
-
-export function startFeederMqtt(): void {
-  const url = process.env.MQTT_URL || 'mqtt://localhost:1883';
-  const opts: mqtt.IClientOptions = {
-    clientId: process.env.MQTT_CLIENT_ID || 'smart-pet-backend',
-    username: process.env.MQTT_USERNAME || undefined,
-    password: process.env.MQTT_PASSWORD || undefined,
-    reconnectPeriod: 5000,
-    clean: false,
-  };
-  client = mqtt.connect(url, opts);
-  client.on('connect', () => {
-    client!.subscribe(STATUS_WILDCARD, { qos: 1 }, (err) => {
-      if (err) console.error('[mqtt] status subscribe failed', err);
-    });
-  });
-  client.on('message', async (topic, payload) => {
-    if (!topic.endsWith('/status')) return;
-    const p = parseStatus(payload);
-    if (!p) return;
-    try {
-      await applyStatus(p);
-    } catch (e) {
-      console.error('[mqtt] status ingest failed', e);
-    }
-  });
-  client.on('error', (e) => console.error('[mqtt]', e.message));
-}
-
-export function publishCommand(kennelId: string, deviceId: string, body: object): Promise<void> {
+function addWaiter(deviceId: string, pred: StatusPredicate, timeoutMs: number): Promise<FeederStatusPayload> {
   return new Promise((resolve, reject) => {
-    if (!client || !client.connected) {
-      reject(new Error('MQTT broker not connected'));
-      return;
-    }
-    const topic = commandTopic(kennelId, deviceId);
-    client.publish(topic, JSON.stringify(body), { qos: 2 }, (err) => {
-      if (err) reject(err);
-      else resolve();
-    });
-  });
-}
-
-export function waitForStatusAck(deviceId: string, sinceMs: number, timeoutMs = ACK_TIMEOUT_MS): Promise<StatusPayload> {
-  return new Promise((resolve, reject) => {
-    const key = `status:${deviceId}`;
     const timer = setTimeout(() => {
-      bus.off(key, onStatus);
-      reject(new Error('Device ack timeout'));
+      const list = (waiters.get(deviceId) || []).filter((w) => w.timer !== timer);
+      if (list.length) waiters.set(deviceId, list);
+      else waiters.delete(deviceId);
+      reject(new Error('Device did not ack feed via status'));
     }, timeoutMs);
-    function onStatus(p: StatusPayload) {
-      if (p.status !== 'online') return;
-      if (p.timestamp && p.timestamp < sinceMs - 1000) return;
-      clearTimeout(timer);
-      bus.off(key, onStatus);
-      resolve(p);
-    }
-    bus.on(key, onStatus);
+    const entry: Waiter = { pred, resolve, reject, timer };
+    const list = waiters.get(deviceId) || [];
+    list.push(entry);
+    waiters.set(deviceId, list);
   });
 }
 
-export async function publishFeedAndWait(kennelId: string, deviceId: string, amount: number): Promise<StatusPayload> {
-  const timestamp = Date.now();
-  await publishCommand(kennelId, deviceId, {
-    command: 'feed',
-    deviceId,
-    kennelId,
-    timestamp,
-    params: { amount },
-  });
-  return waitForStatusAck(deviceId, timestamp);
+export function createMemoryBus(): FeederBus {
+  const published: Array<{ topic: string; payload: object; qos: number }> = [];
+  const mem: FeederBus & { published: typeof published } = {
+    published,
+    connected: () => true,
+    async publishCommand(topic: string, payload: object) {
+      published.push({ topic, payload, qos: COMMAND_QOS });
+    },
+    waitForStatus(deviceId, pred, timeoutMs) {
+      return addWaiter(deviceId, pred, timeoutMs);
+    },
+  };
+  return mem;
 }
 
-export async function publishScheduleSet(
-  kennelId: string,
-  deviceId: string,
-  schedules: { id: string; time: string; amount: number; enabled: boolean }[]
-): Promise<void> {
-  await publishCommand(kennelId, deviceId, {
-    command: 'schedule_set',
-    deviceId,
-    kennelId,
-    timestamp: Date.now(),
-    params: { schedules },
-  });
+export async function handleIncomingStatus(topic: string, body: string): Promise<void> {
+  const payload = await ingestStatusMessage(topic, body);
+  if (payload) notifyStatus(payload);
 }
+
+export function startFeederMqttFromEnv(): void {
+  const broker = process.env.MQTT_BROKER;
+  if (!broker) {
+    console.warn('[mqtt] MQTT_BROKER unset; feeder command path will return 503 until configured');
+    return;
+  }
+
+  const mqttClient = mqtt.connect(broker, {
+    username: process.env.MQTT_USER,
+    password: process.env.MQTT_PASSWORD,
+    clientId: 'smart-pet-backend-feeder-' + Math.random().toString(16).slice(2, 10),
+    reconnectPeriod: 5000,
+  });
+  client = mqttClient;
+
+  mqttClient.on('connect', () => {
+    console.log('[mqtt] feeder bus connected');
+    mqttClient.subscribe(statusWildcard(), { qos: STATUS_QOS }, (err) => {
+      if (err) console.error('[mqtt] status subscribe failed', err);
+      else console.log(`[mqtt] subscribed ${statusWildcard()} qos ${STATUS_QOS}`);
+    });
+  });
+
+  mqttClient.on('message', (topic, message) => {
+    handleIncomingStatus(topic, message.toString()).catch((err) => {
+      console.error('[mqtt] status ingest error', err);
+    });
+  });
+
+  mqttClient.on('error', (err) => {
+    console.error('[mqtt] error', err.message);
+  });
+
+  bus = {
+    connected: () => mqttClient.connected,
+    async publishCommand(topic: string, payload: object) {
+      await new Promise<void>((resolve, reject) => {
+        mqttClient.publish(topic, JSON.stringify(payload), { qos: COMMAND_QOS }, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    },
+    waitForStatus(deviceId, pred, timeoutMs) {
+      return addWaiter(deviceId, pred, timeoutMs);
+    },
+  };
+}
+
+export function stopFeederMqtt(): void {
+  client?.end();
+  client = null;
+  bus = null;
+}
+
+export { commandTopic, statusTopic };
 
 export function isFoodLow(foodLevel: number | null | undefined): boolean {
-  return typeof foodLevel === 'number' && foodLevel < 20;
+  return deriveIsFoodLow(foodLevel);
 }
+
+export const startFeederMqtt = startFeederMqttFromEnv;
