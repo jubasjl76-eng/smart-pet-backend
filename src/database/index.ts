@@ -1,20 +1,22 @@
 /**
  * PostgreSQL Database Setup
- * Cloud feeder command path uses pg only. No Mongo.
+ * Used by both Edge and Cloud modes
  */
+
 import pg from 'pg';
-import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
+import bcrypt from 'bcryptjs';
 
 dotenv.config();
 
 const { Pool } = pg;
 
+// Determine which database to use based on mode
 const BACKEND_MODE = (process.env.BACKEND_MODE || 'cloud').toLowerCase();
 
-export const pool = new Pool({
+const pool = new Pool({
   host: process.env.PG_HOST || 'localhost',
-  port: parseInt(process.env.PG_PORT || '5432', 10),
+  port: parseInt(process.env.PG_PORT || '5432'),
   database: process.env.PG_DATABASE || (BACKEND_MODE === 'edge' ? 'smartpet_edge' : 'smartpet'),
   user: process.env.PG_USER || 'postgres',
   password: process.env.PG_PASSWORD || 'postgres',
@@ -22,8 +24,11 @@ export const pool = new Pool({
 
 export async function initializeDatabase(): Promise<void> {
   console.log(`[Database] Initializing PostgreSQL (${BACKEND_MODE} mode)...`);
-
-  await pool.query(`
+  
+  try {
+    // Create tables
+    await pool.query(`
+      -- Users table
       CREATE TABLE IF NOT EXISTS users (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         email VARCHAR(255) UNIQUE NOT NULL,
@@ -33,6 +38,7 @@ export async function initializeDatabase(): Promise<void> {
         updated_at TIMESTAMP DEFAULT NOW()
       );
 
+      -- Devices table
       CREATE TABLE IF NOT EXISTS devices (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id UUID REFERENCES users(id),
@@ -50,6 +56,7 @@ export async function initializeDatabase(): Promise<void> {
         updated_at TIMESTAMP DEFAULT NOW()
       );
 
+      -- Device events table
       CREATE TABLE IF NOT EXISTS device_events (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id UUID REFERENCES users(id),
@@ -62,6 +69,7 @@ export async function initializeDatabase(): Promise<void> {
         created_at TIMESTAMP DEFAULT NOW()
       );
 
+      -- Device commands table
       CREATE TABLE IF NOT EXISTS device_commands (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id UUID REFERENCES users(id),
@@ -73,6 +81,7 @@ export async function initializeDatabase(): Promise<void> {
         executed_at TIMESTAMP
       );
 
+      -- Schedules table
       CREATE TABLE IF NOT EXISTS schedules (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id UUID REFERENCES users(id),
@@ -88,6 +97,7 @@ export async function initializeDatabase(): Promise<void> {
         updated_at TIMESTAMP DEFAULT NOW()
       );
 
+      -- Alerts table
       CREATE TABLE IF NOT EXISTS alerts (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id UUID REFERENCES users(id),
@@ -106,6 +116,7 @@ export async function initializeDatabase(): Promise<void> {
         created_at TIMESTAMP DEFAULT NOW()
       );
 
+      -- Gateways table
       CREATE TABLE IF NOT EXISTS gateways (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         gateway_id VARCHAR(255) UNIQUE NOT NULL,
@@ -117,6 +128,7 @@ export async function initializeDatabase(): Promise<void> {
         updated_at TIMESTAMP DEFAULT NOW()
       );
 
+      -- Edge sync queue (for edge mode)
       CREATE TABLE IF NOT EXISTS sync_queue (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         data JSONB NOT NULL,
@@ -124,6 +136,7 @@ export async function initializeDatabase(): Promise<void> {
         created_at TIMESTAMP DEFAULT NOW()
       );
 
+      -- Indexes
       CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id);
       CREATE INDEX IF NOT EXISTS idx_devices_device_id ON devices(device_id);
       CREATE INDEX IF NOT EXISTS idx_events_device ON device_events(device_id);
@@ -132,77 +145,61 @@ export async function initializeDatabase(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_alerts_user ON alerts(user_id);
       CREATE INDEX IF NOT EXISTS idx_alerts_acknowledged ON alerts(acknowledged);
       CREATE INDEX IF NOT EXISTS idx_sync_queue_synced ON sync_queue(synced);
-  `);
+    `);
+    
 
-  await pool.query(`
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'owner';
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS kennel_id VARCHAR(255);
+
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'owner';
       ALTER TABLE devices ADD COLUMN IF NOT EXISTS kennel_id VARCHAR(255);
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS food_level FLOAT;
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'offline';
       ALTER TABLE devices ADD COLUMN IF NOT EXISTS mqtt_username VARCHAR(255);
       ALTER TABLE devices ADD COLUMN IF NOT EXISTS mqtt_password_hash VARCHAR(255);
-      ALTER TABLE devices ADD COLUMN IF NOT EXISTS food_level FLOAT;
-      ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_feed TIMESTAMP;
-      ALTER TABLE devices ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'offline';
-      ALTER TABLE devices ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP;
-      ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_status_at TIMESTAMP;
-      ALTER TABLE schedules ADD COLUMN IF NOT EXISTS amount FLOAT;
-      CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
-      CREATE INDEX IF NOT EXISTS idx_devices_kennel ON devices(kennel_id);
-  `);
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS claim_code VARCHAR(255);
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_feed BIGINT;
+      ALTER TABLE schedules ADD COLUMN IF NOT EXISTS amount FLOAT DEFAULT 100;
+      CREATE TABLE IF NOT EXISTS pets (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id),
+        name VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
 
-  console.log('[Database] Tables created successfully');
-}
-
-export async function seedIdentities(): Promise<void> {
-  const ownerEmail = process.env.SEED_OWNER_EMAIL || 'owner@localhost';
-  const staffEmail = process.env.SEED_STAFF_EMAIL || 'staff@localhost';
-  const ownerPassword = process.env.SEED_OWNER_PASSWORD;
-  const staffPassword = process.env.SEED_STAFF_PASSWORD;
-
-  if (ownerPassword) {
-    await upsertIdentity(ownerEmail, ownerPassword, 'owner', 'home', 'Seed Owner');
-    console.log(`[seed] owner ready: ${ownerEmail} (kennel=home)`);
-  } else {
-    console.warn('[seed] SEED_OWNER_PASSWORD unset; owner not seeded');
-  }
-
-  if (staffPassword) {
-    await upsertIdentity(staffEmail, staffPassword, 'staff', null, 'Seed Staff');
-    console.log(`[seed] staff ready: ${staffEmail}`);
-  } else {
-    console.warn('[seed] SEED_STAFF_PASSWORD unset; staff not seeded');
-  }
-}
-
-async function upsertIdentity(
-  email: string,
-  password: string,
-  role: 'owner' | 'staff',
-  kennelId: string | null,
-  name: string
-): Promise<void> {
-  const existing = await queryOne<any>('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
-  const hash = await bcrypt.hash(password, 10);
-  if (existing) {
-    await execute(
-      `UPDATE users SET password_hash = $1, role = $2, kennel_id = COALESCE(kennel_id, $3), name = COALESCE(name, $4), updated_at = NOW()
-       WHERE email = $5`,
-      [hash, role, kennelId, name, email.toLowerCase()]
+    const ownerEmail = process.env.SEED_OWNER_EMAIL || 'owner@localhost';
+    const staffEmail = process.env.SEED_STAFF_EMAIL || 'staff@localhost';
+    const ownerPass = process.env.SEED_OWNER_PASSWORD || 'owner-local-only';
+    const staffPass = process.env.SEED_STAFF_PASSWORD || 'staff-local-only';
+    const ownerHash = await bcrypt.hash(ownerPass, 10);
+    const staffHash = await bcrypt.hash(staffPass, 10);
+    await pool.query(
+      `INSERT INTO users (email, password_hash, name, role)
+       VALUES ($1, $2, 'Owner', 'owner')
+       ON CONFLICT (email) DO NOTHING`,
+      [ownerEmail, ownerHash]
     );
-    return;
+    await pool.query(
+      `INSERT INTO users (email, password_hash, name, role)
+       VALUES ($1, $2, 'Staff', 'staff')
+       ON CONFLICT (email) DO NOTHING`,
+      [staffEmail, staffHash]
+    );
+
+    console.log('[Database] Tables created successfully');
+  } catch (error) {
+    console.error('[Database] Error creating tables:', error);
   }
-  await execute(
-    `INSERT INTO users (email, password_hash, name, role, kennel_id) VALUES ($1, $2, $3, $4, $5)`,
-    [email.toLowerCase(), hash, name, role, kennelId]
-  );
 }
 
-export async function query<T = any>(text: string, params?: any[]): Promise<T[]> {
+// Query helpers
+export async function query<T>(text: string, params?: any[]): Promise<T[]> {
   const result = await pool.query(text, params);
-  return result.rows as T[];
+  return result.rows;
 }
 
-export async function queryOne<T = any>(text: string, params?: any[]): Promise<T | null> {
+export async function queryOne<T>(text: string, params?: any[]): Promise<T | null> {
   const rows = await query<T>(text, params);
   return rows[0] || null;
 }
@@ -210,3 +207,5 @@ export async function queryOne<T = any>(text: string, params?: any[]): Promise<T
 export async function execute(text: string, params?: any[]): Promise<void> {
   await pool.query(text, params);
 }
+
+export { pool };

@@ -14,24 +14,29 @@ const validate = (req: Request, res: Response, next: Function): void => {
   next();
 };
 
+// POST /api/auth/register
 router.post('/register', [
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 6 }),
   body('name').trim().notEmpty(),
 ], validate, authController.register);
 
+// POST /api/auth/login
 router.post('/login', [
   body('email').isEmail().normalizeEmail(),
   body('password').notEmpty(),
 ], validate, authController.login);
 
+// GET /api/auth/me
 router.get('/me', auth, authController.getMe);
 
+// PUT /api/auth/profile
 router.put('/profile', auth, [
   body('name').optional().trim().notEmpty(),
   body('email').optional().isEmail().normalizeEmail(),
 ], validate, authController.updateProfile);
 
+// PUT /api/auth/password
 router.put('/password', auth, [
   body('currentPassword').notEmpty(),
   body('newPassword').isLength({ min: 6 }),
