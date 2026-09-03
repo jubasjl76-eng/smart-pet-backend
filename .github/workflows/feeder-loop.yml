@@ -1,0 +1,36 @@
+name: feeder-loop
+
+on:
+  pull_request:
+    branches: [development]
+  push:
+    branches: [development]
+
+jobs:
+  pilot-loop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PILOT_BACKEND_URL: http://localhost:3000
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/smartpet
+      PG_HOST: localhost
+      MQTT_URL: mqtt://localhost:1883
+      PILOT_JWT: ${{ secrets.PILOT_JWT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Compose up
+        run: docker compose up -d --build
+      - name: Pilot loop tests
+        run: >-
+          npx vitest run
+          test/pilot-loop/j1-claim.test.ts
+          test/pilot-loop/food-level-mqtt.test.ts
+          test/pilot-loop/feed-now-firmware.test.ts
+          test/pilot-loop/schedule-device-clock.test.ts
+          test/pilot-loop/in-app-low-food.test.ts
