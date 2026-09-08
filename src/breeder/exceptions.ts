@@ -6,6 +6,7 @@
  */
 import { query, queryOne, execute } from '../database/index.js';
 import { exceptionPriority, channelsForDelivery, type Severity } from './logic/delivery.js';
+import { emitStream } from './stream.js';
 
 export interface RaiseExceptionInput {
   kennelId: string;
@@ -61,6 +62,7 @@ export async function raiseException(input: RaiseExceptionInput): Promise<{ exce
       [existing.id, input.detail ?? null, severity, input.priority ?? existing.priority]
     );
     const bumped = await queryOne<ExceptionRow>('SELECT * FROM exceptions WHERE id = $1', [existing.id]);
+    emitStream(input.kennelId, { type: 'exception', action: 'updated', exception: (bumped ?? existing) as Record<string, unknown> });
     return { exception: bumped ?? existing, created: false };
   }
 
@@ -80,6 +82,7 @@ export async function raiseException(input: RaiseExceptionInput): Promise<{ exce
   const exception = row as ExceptionRow;
 
   await enqueueNotifications(exception, input.notifyAudience ?? null);
+  emitStream(input.kennelId, { type: 'exception', action: 'created', exception: exception as Record<string, unknown> });
   return { exception, created: true };
 }
 
@@ -185,5 +188,7 @@ export async function transitionException(
       );
       break;
   }
-  return queryOne<ExceptionRow>('SELECT * FROM exceptions WHERE id = $1', [id]);
+  const updated = await queryOne<ExceptionRow>('SELECT * FROM exceptions WHERE id = $1', [id]);
+  if (updated) emitStream(kennelId, { type: 'exception', action: 'updated', exception: updated as Record<string, unknown> });
+  return updated;
 }

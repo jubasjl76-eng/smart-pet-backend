@@ -30,11 +30,13 @@ export function getJwtSecret(): string {
 export const auth = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    // `?token=` fallback for EventSource (SSE), which can't set headers.
+    const queryToken = typeof req.query?.token === 'string' ? req.query.token : null;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : queryToken;
+    if (!token) {
       res.status(401).json({ error: 'No token provided' });
       return;
     }
-    const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, requireJwtSecret()) as { userId: string; role?: string };
     const user = await queryOne<any>('SELECT id, email, name, role, active FROM users WHERE id = $1', [decoded.userId]);
     if (!user) {
