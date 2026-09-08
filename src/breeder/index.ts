@@ -16,12 +16,17 @@ import inbox from './routes/inbox.js';
 import rules from './routes/rules.js';
 import ops from './routes/ops.js';
 import devices from './routes/devices.js';
+import { streamHandler } from './stream.js';
 
 export { startBreederEngine, stopBreederEngine, engineTick } from './engine/index.js';
 export { initBreederSchema } from './schema.js';
 
 export function mountBreeder(app: Express): void {
   const guard = [auth, withKennel];
+
+  // Server-Sent Events — live care-inbox + device state for the console.
+  app.get('/api/breeder/stream', ...guard, streamHandler);
+
   app.use('/api/breeder/animals', ...guard, animals);
   app.use('/api/breeder/litters', ...guard, litters);
   app.use('/api/breeder/medications', ...guard, meds);

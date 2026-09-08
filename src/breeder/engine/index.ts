@@ -17,6 +17,7 @@ import { notifierTick } from './notifier.js';
 import { consumableStatus } from '../logic/consumables.js';
 import { missedDoses, type MedSchedule, type MedLog } from '../logic/medications.js';
 import { raiseException } from '../exceptions.js';
+import { emitStream } from '../stream.js';
 
 let client: MqttClient | null = null;
 let tickTimer: NodeJS.Timeout | null = null;
@@ -53,6 +54,9 @@ export function normaliseMessage(topic: string, payloadRaw: Buffer | string): Ru
 
 async function onMessage(topic: string, payload: Buffer): Promise<void> {
   for (const event of normaliseMessage(topic, payload)) {
+    if (event.type === 'device_status' && event.deviceId) {
+      emitStream(event.kennelId, { type: 'device', deviceId: event.deviceId, status: event.status ?? 'unknown' });
+    }
     try {
       await ingestEvent(event);
     } catch (e) {
@@ -112,6 +116,7 @@ async function detectOffline(): Promise<void> {
   );
   for (const d of stale) {
     await execute(`UPDATE devices SET status='offline', is_online=false WHERE device_id=$1`, [d.device_id]);
+    emitStream(d.kennel_id, { type: 'device', deviceId: d.device_id, status: 'offline' });
     await ingestEvent({
       type: 'device_offline', kennelId: d.kennel_id, deviceId: d.device_id, at: new Date(),
     }).catch(() => {});
