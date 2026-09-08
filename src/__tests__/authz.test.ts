@@ -165,26 +165,30 @@ describe('register', () => {
 
   it('never mints staff', async () => {
     vi.mocked(queryOne)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
+      .mockResolvedValueOnce(null) // existing-email check
+      .mockResolvedValueOnce({     // read-back of the new user
         id: 'new-owner',
         email: 'a@b.c',
         name: 'A',
         role: 'owner',
         kennel_id: 'kennel-x',
-      });
+      })
+      .mockResolvedValueOnce({ family: 'fam-1' }); // issueRefreshToken INSERT ... RETURNING family
     vi.mocked(execute).mockResolvedValue();
     const res = mockRes();
     await register(
       {
         ip: '127.0.0.1',
         hostname: 'localhost',
+        headers: {},
         body: { email: 'a@b.c', password: 'secret1', name: 'A', role: 'staff' },
       } as any,
       res
     );
     expect(res.statusCode).toBe(201);
     expect(res.body.user.role).toBe('owner');
+    expect(res.body.refreshToken).toBeTruthy();
+    expect(res.body.accessToken).toBeTruthy();
     const insert = vi.mocked(execute).mock.calls[0][0] as string;
     expect(insert).toMatch(/'owner'/);
     expect(insert).not.toMatch(/staff/);

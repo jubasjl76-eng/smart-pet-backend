@@ -27,6 +27,18 @@ router.post('/login', [
   body('password').notEmpty(),
 ], validate, authController.login);
 
+// POST /api/auth/refresh — rotate a refresh token
+router.post('/refresh', [body('refreshToken').notEmpty()], validate, authController.refresh);
+
+// POST /api/auth/logout — revoke refresh token(s)
+router.post('/logout', authController.logout);
+
+// POST /api/auth/accept-invite — { token, name, password }
+router.post('/accept-invite', [
+  body('token').notEmpty(),
+  body('password').isLength({ min: 6 }),
+], validate, authController.acceptInvite);
+
 // GET /api/auth/me
 router.get('/me', auth, authController.getMe);
 

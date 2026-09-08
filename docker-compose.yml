@@ -1,3 +1,5 @@
+# Local dev stack — run from the repo root:  docker compose up --build
+# (docker/docker-compose.yml is the same stack; use either.)
 services:
   postgres:
     image: postgres:16-alpine
@@ -26,6 +28,21 @@ services:
     volumes:
       - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
 
+  migrate:
+    build: .
+    container_name: smart-pet-migrate
+    command: ["npm", "run", "migrate"]
+    environment:
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_DATABASE: smartpet
+      PG_USER: postgres
+      PG_PASSWORD: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   backend:
     build: .
     container_name: smart-pet-backend
@@ -43,11 +60,23 @@ services:
       PG_PASSWORD: postgres
       MQTT_URL: mqtt://mosquitto:1883
       JWT_SECRET: ${JWT_SECRET:-dev-secret-key-do-not-use-in-production}
+      APP_BASE_URL: http://localhost:5173
     depends_on:
       postgres:
         condition: service_healthy
       mosquitto:
         condition: service_started
+      migrate:
+        condition: service_completed_successfully
+
+  dashboard:
+    build: ../backoffice-dashboard
+    container_name: smart-pet-dashboard
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
 
 volumes:
   postgres-data:

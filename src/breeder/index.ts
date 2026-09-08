@@ -15,6 +15,7 @@ import meds from './routes/meds.js';
 import inbox from './routes/inbox.js';
 import rules from './routes/rules.js';
 import ops from './routes/ops.js';
+import devices from './routes/devices.js';
 
 export { startBreederEngine, stopBreederEngine, engineTick } from './engine/index.js';
 export { initBreederSchema } from './schema.js';
@@ -26,6 +27,7 @@ export function mountBreeder(app: Express): void {
   app.use('/api/breeder/medications', ...guard, meds);
   app.use('/api/breeder/inbox', ...guard, inbox);
   app.use('/api/breeder/rules', ...guard, rules);
+  app.use('/api/breeder/ops/devices', ...guard, devices);
   app.use('/api/breeder/ops', ...guard, ops);
 
   app.get('/api/breeder/health', (_req, res) => {
