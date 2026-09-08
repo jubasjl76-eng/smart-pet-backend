@@ -36,9 +36,13 @@ export const auth = async (req: AuthRequest, res: Response, next: NextFunction):
     }
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, requireJwtSecret()) as { userId: string; role?: string };
-    const user = await queryOne<any>('SELECT id, email, name, role FROM users WHERE id = $1', [decoded.userId]);
+    const user = await queryOne<any>('SELECT id, email, name, role, active FROM users WHERE id = $1', [decoded.userId]);
     if (!user) {
       res.status(401).json({ error: 'User not found' });
+      return;
+    }
+    if (user.active === false) {
+      res.status(403).json({ error: 'Account deactivated' });
       return;
     }
     const role = mapRole(user.role);
@@ -58,8 +62,11 @@ export const adminOnly = (req: AuthRequest, res: Response, next: NextFunction): 
   next();
 };
 
+/** Short-lived access token. Pair with a rotating refresh token (src/auth/tokens.ts). */
+export const ACCESS_TTL = process.env.ACCESS_TTL || '12h';
+
 export const generateToken = (userId: string, role?: string): string => {
-  return jwt.sign({ userId, role: mapRole(role) }, requireJwtSecret(), { expiresIn: '30d' });
+  return jwt.sign({ userId, role: mapRole(role) }, requireJwtSecret(), { expiresIn: ACCESS_TTL as any });
 };
 
 /** Owner household routes. Staff JWT (same issuer) does not pass. */

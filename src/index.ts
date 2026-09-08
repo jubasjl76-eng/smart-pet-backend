@@ -18,8 +18,12 @@ import authRoutes from './routes/auth.js';
 import deviceRoutes from './routes/devices.js';
 import scheduleRoutes from './routes/schedules.js';
 import eventRoutes from './routes/events.js';
+import setupRoutes from './routes/setup.js';
+import userRoutes from './routes/users.js';
 import { auth, ownerOnly, adminOnly } from './middleware/auth.js';
-import { initializeDatabase, query, queryOne } from './database/index.js';
+import { initializeDatabase, query, queryOne, pool } from './database/index.js';
+import { runMigrations } from './database/migrate.js';
+import { runSeed } from './database/seed.js';
 import { startFeederMqtt } from './services/feederMqtt.js';
 import { mountBreeder, initBreederSchema, startBreederEngine } from './breeder/index.js';
 
@@ -36,6 +40,9 @@ app.use(express.json());
 
 initializeDatabase()
   .then(() => initBreederSchema())
+  .then(() => runMigrations(pool, (m) => console.log(m)))
+  .then((applied) => { if (applied.length) console.log(`[boot] ${applied.length} migration(s) applied`); })
+  .then(() => runSeed())
   .then(() => startFeederMqtt())
   .then(() => startBreederEngine())
   .catch((e) => {
@@ -66,6 +73,8 @@ app.post('/api/iot/events', closed);
 app.use('/api/iot', closed);
 
 app.use('/api/auth', authRoutes);
+app.use('/api/setup', setupRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/devices', auth, ownerOnly, deviceRoutes);
 app.use('/api/schedules', auth, ownerOnly, scheduleRoutes);
 app.use('/api/events', auth, ownerOnly, eventRoutes);

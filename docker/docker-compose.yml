@@ -1,3 +1,14 @@
+# Local dev stack — the whole breeder product on a laptop.
+#   docker compose -f docker/docker-compose.yml up --build
+#
+#   postgres   :5432   Postgres 16
+#   mosquitto  :1883   MQTT broker (anonymous — laptop only; ACL model lives in the DB)
+#   backend    :3000   API + breeder platform + MQTT engine
+#   dashboard  :5173   staff/breeder web console — opt-in (Phase 2):
+#                        docker compose --profile dashboard up
+#
+# Point the simulator at this broker:
+#   cd ../smart-pet-simulator && npm run sim -- --scenario feeder-jam --broker mqtt://localhost:1883
 services:
   postgres:
     image: postgres:16-alpine
@@ -45,11 +56,28 @@ services:
       PG_PASSWORD: postgres
       MQTT_URL: mqtt://mosquitto:1883
       JWT_SECRET: ${JWT_SECRET:-dev-secret-key-do-not-use-in-production}
+      SEED_OWNER_EMAIL: owner@smartpet.local
+      SEED_OWNER_PASSWORD: changeme
+      SEED_DEMO: "true"
+      APP_BASE_URL: http://localhost:5173
+      # MOSQUITTO_ACL_PATH: /mosquitto/config/acl   # enable to write a real ACL file
     depends_on:
       postgres:
         condition: service_healthy
       mosquitto:
         condition: service_started
+
+  dashboard:
+    build:
+      context: ../../backoffice-dashboard
+      dockerfile: Dockerfile
+    container_name: smart-pet-dashboard
+    profiles: ["dashboard"]   # opt-in: `docker compose --profile dashboard up`
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
 
 volumes:
   postgres-data:

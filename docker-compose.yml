@@ -1,3 +1,5 @@
+# Local dev stack — run from the repo root:  docker compose up --build
+# (docker/docker-compose.yml is the same stack; use either.)
 services:
   postgres:
     image: postgres:16-alpine
@@ -43,11 +45,25 @@ services:
       PG_PASSWORD: postgres
       MQTT_URL: mqtt://mosquitto:1883
       JWT_SECRET: ${JWT_SECRET:-dev-secret-key-do-not-use-in-production}
+      SEED_OWNER_EMAIL: owner@smartpet.local
+      SEED_OWNER_PASSWORD: changeme
+      SEED_DEMO: "true"
+      APP_BASE_URL: http://localhost:5173
     depends_on:
       postgres:
         condition: service_healthy
       mosquitto:
         condition: service_started
+
+  dashboard:
+    build: ../backoffice-dashboard
+    container_name: smart-pet-dashboard
+    profiles: ["dashboard"]
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
 
 volumes:
   postgres-data:

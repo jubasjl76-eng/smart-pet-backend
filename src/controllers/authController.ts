@@ -3,10 +3,25 @@ import bcrypt from 'bcryptjs';
 import { query, queryOne, execute } from '../database/index.js';
 import { generateToken, AuthRequest } from '../middleware/auth.js';
 import { isLocalRegisterAllowed, mapRole } from '../identity/roles.js';
+import {
+  issueRefreshToken, rotateRefreshToken, revokeRefreshToken, revokeAllForUser,
+} from '../auth/tokens.js';
+import { acceptInvite as consumeInvite } from '../auth/invites.js';
 
 function toJson(user: any) {
   const role = mapRole(user.role);
-  return { id: user.id, _id: user.id, email: user.email, name: user.name, role };
+  return {
+    id: user.id, _id: user.id, email: user.email, name: user.name, role,
+    kennelId: user.kennel_id ?? null,
+    active: user.active ?? true,
+  };
+}
+
+async function authPayload(user: any, req: Request) {
+  const accessToken = generateToken(user.id, user.role);
+  const { token: refreshToken } = await issueRefreshToken(user.id, req.headers['user-agent']);
+  // `token` kept for back-compat with older callers.
+  return { user: toJson(user), token: accessToken, accessToken, refreshToken };
 }
 
 export const register = async (req: Request, res: Response): Promise<void> => {
@@ -28,15 +43,14 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       [email, password_hash, name || null]
     );
     const user = await queryOne<any>(
-      'SELECT id, email, name, role FROM users WHERE email = $1',
+      'SELECT id, email, name, role, kennel_id, active FROM users WHERE email = $1',
       [email]
     );
     if (!user) {
       res.status(500).json({ error: 'Registration failed' });
       return;
     }
-    const token = generateToken(user.id, user.role);
-    res.status(201).json({ message: 'User registered successfully', user: toJson(user), token });
+    res.status(201).json({ message: 'User registered successfully', ...(await authPayload(user, req)) });
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({ error: 'Registration failed' });
@@ -46,7 +60,10 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 export const login = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
-    const user = await queryOne<any>('SELECT id, email, name, role, password_hash FROM users WHERE email = $1', [email]);
+    const user = await queryOne<any>(
+      'SELECT id, email, name, role, kennel_id, active, password_hash FROM users WHERE email = $1',
+      [email]
+    );
     if (!user) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
@@ -56,11 +73,66 @@ export const login = async (req: AuthRequest, res: Response): Promise<void> => {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
-    const token = generateToken(user.id, user.role);
-    res.json({ message: 'Login successful', user: toJson(user), token });
+    if (user.active === false) {
+      res.status(403).json({ error: 'Account deactivated' });
+      return;
+    }
+    res.json({ message: 'Login successful', ...(await authPayload(user, req)) });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Login failed' });
+  }
+};
+
+/** POST /api/auth/refresh — rotate a refresh token for a fresh access token. */
+export const refresh = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const raw = String(req.body?.refreshToken || '').trim();
+    if (!raw) {
+      res.status(400).json({ error: 'refreshToken required' });
+      return;
+    }
+    const result = await rotateRefreshToken(raw, req.headers['user-agent']);
+    if (!result) {
+      res.status(401).json({ error: 'Invalid or expired refresh token' });
+      return;
+    }
+    const user = await queryOne<any>(
+      'SELECT id, email, name, role, kennel_id, active FROM users WHERE id = $1',
+      [result.userId]
+    );
+    if (!user || user.active === false) {
+      res.status(401).json({ error: 'Account unavailable' });
+      return;
+    }
+    const accessToken = generateToken(user.id, user.role);
+    res.json({ user: toJson(user), token: accessToken, accessToken, refreshToken: result.refresh.token });
+  } catch (error) {
+    console.error('Refresh error:', error);
+    res.status(500).json({ error: 'Refresh failed' });
+  }
+};
+
+/** POST /api/auth/logout — revoke one refresh token, or all for the user. */
+export const logout = async (req: AuthRequest, res: Response): Promise<void> => {
+  const raw = String(req.body?.refreshToken || '').trim();
+  if (raw) await revokeRefreshToken(raw);
+  else if (req.user?.id) await revokeAllForUser(req.user.id);
+  res.json({ ok: true });
+};
+
+/** POST /api/auth/accept-invite — { token, name, password } → creates the account. */
+export const acceptInvite = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token, name, password } = req.body || {};
+    if (!token || !password) {
+      res.status(400).json({ error: 'token and password are required' });
+      return;
+    }
+    const { user } = await consumeInvite(String(token), String(name || ''), String(password));
+    res.status(201).json({ message: 'Account created', ...(await authPayload(user, req)) });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
   }
 };
 
@@ -80,7 +152,7 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
       }
     }
     const user = await queryOne<any>(
-      `UPDATE users SET name = COALESCE($1, name), email = COALESCE($2, email), updated_at = NOW() WHERE id = $3 RETURNING id, email, name, role`,
+      `UPDATE users SET name = COALESCE($1, name), email = COALESCE($2, email), updated_at = NOW() WHERE id = $3 RETURNING id, email, name, role, kennel_id, active`,
       [name || null, email || null, id]
     );
     res.json({ user: toJson(user) });
