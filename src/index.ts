@@ -23,6 +23,7 @@ import userRoutes from './routes/users.js';
 import { auth, ownerOnly, adminOnly } from './middleware/auth.js';
 import { initializeDatabase, query, queryOne, pool } from './database/index.js';
 import { runMigrations } from './database/migrate.js';
+import { runSeed } from './database/seed.js';
 import { startFeederMqtt } from './services/feederMqtt.js';
 import { mountBreeder, initBreederSchema, startBreederEngine } from './breeder/index.js';
 
@@ -41,6 +42,7 @@ initializeDatabase()
   .then(() => initBreederSchema())
   .then(() => runMigrations(pool, (m) => console.log(m)))
   .then((applied) => { if (applied.length) console.log(`[boot] ${applied.length} migration(s) applied`); })
+  .then(() => runSeed())
   .then(() => startFeederMqtt())
   .then(() => startBreederEngine())
   .catch((e) => {

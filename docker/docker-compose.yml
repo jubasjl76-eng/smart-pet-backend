@@ -56,6 +56,9 @@ services:
       PG_PASSWORD: postgres
       MQTT_URL: mqtt://mosquitto:1883
       JWT_SECRET: ${JWT_SECRET:-dev-secret-key-do-not-use-in-production}
+      SEED_OWNER_EMAIL: owner@smartpet.local
+      SEED_OWNER_PASSWORD: changeme
+      SEED_DEMO: "true"
       APP_BASE_URL: http://localhost:5173
       # MOSQUITTO_ACL_PATH: /mosquitto/config/acl   # enable to write a real ACL file
     depends_on:

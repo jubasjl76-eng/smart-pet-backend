@@ -5,7 +5,6 @@
 
 import pg from 'pg';
 import dotenv from 'dotenv';
-import bcrypt from 'bcryptjs';
 
 dotenv.config();
 
@@ -168,24 +167,8 @@ export async function initializeDatabase(): Promise<void> {
       );
     `);
 
-    const ownerEmail = process.env.SEED_OWNER_EMAIL || 'owner@localhost';
-    const staffEmail = process.env.SEED_STAFF_EMAIL || 'staff@localhost';
-    const ownerPass = process.env.SEED_OWNER_PASSWORD || 'owner-local-only';
-    const staffPass = process.env.SEED_STAFF_PASSWORD || 'staff-local-only';
-    const ownerHash = await bcrypt.hash(ownerPass, 10);
-    const staffHash = await bcrypt.hash(staffPass, 10);
-    await pool.query(
-      `INSERT INTO users (email, password_hash, name, role)
-       VALUES ($1, $2, 'Owner', 'owner')
-       ON CONFLICT (email) DO NOTHING`,
-      [ownerEmail, ownerHash]
-    );
-    await pool.query(
-      `INSERT INTO users (email, password_hash, name, role)
-       VALUES ($1, $2, 'Staff', 'staff')
-       ON CONFLICT (email) DO NOTHING`,
-      [staffEmail, staffHash]
-    );
+    // Users, the kennel, rules and pens are seeded by src/database/seed.ts,
+    // which runs on boot after the migrations.
 
     console.log('[Database] Tables created successfully');
   } catch (error) {

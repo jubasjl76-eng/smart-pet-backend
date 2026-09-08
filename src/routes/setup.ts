@@ -12,7 +12,7 @@
 import { Router, type Response } from 'express';
 import { query, queryOne, execute } from '../database/index.js';
 import { auth, type AuthRequest } from '../middleware/auth.js';
-import { presetRules } from '../breeder/logic/rules.js';
+import { runSeed } from '../database/seed.js';
 
 const router = Router();
 router.use(auth);
@@ -129,37 +129,9 @@ router.post('/seed-demo', async (req: AuthRequest, res: Response) => {
     res.status(403).json({ error: 'Only the kennel owner can do this' });
     return;
   }
-  const k = kennel.slug;
-  const created: Record<string, number> = { pens: 0, animals: 0, rules: 0 };
-
-  for (const [name, kind] of [['Whelping 1', 'whelping'], ['Run A', 'run'], ['Run B', 'run'], ['Yard', 'yard']] as const) {
-    const exists = await queryOne(`SELECT id FROM pens WHERE kennel_id = $1 AND name = $2`, [k, name]);
-    if (!exists) {
-      await execute(`INSERT INTO pens (kennel_id, name, kind) VALUES ($1, $2, $3)`, [k, name, kind]);
-      created.pens++;
-    }
-  }
-  for (const [name, sex] of [['Bella', 'female'], ['Rocky', 'male']] as const) {
-    const exists = await queryOne(`SELECT id FROM animals WHERE kennel_id = $1 AND name = $2`, [k, name]);
-    if (!exists) {
-      await execute(
-        `INSERT INTO animals (kennel_id, name, sex, role, adult_weight_kg) VALUES ($1, $2, $3, 'breeding', 28)`,
-        [k, name, sex]
-      );
-      created.animals++;
-    }
-  }
-  const have = new Set((await query<{ name: string }>(`SELECT name FROM rules WHERE kennel_id = $1`, [k])).map((r) => r.name));
-  for (const p of presetRules(k)) {
-    if (have.has(p.name)) continue;
-    await execute(
-      `INSERT INTO rules (kennel_id, name, enabled, trigger, conditions, actions, cooldown_seconds)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [k, p.name, p.enabled, JSON.stringify(p.trigger), JSON.stringify(p.conditions), JSON.stringify(p.actions), p.cooldownSeconds]
-    );
-    created.rules++;
-  }
-  res.json({ seeded: created });
+  // Same seed that runs on boot, forced with demo animals + setup-complete.
+  const result = await runSeed({ demo: true });
+  res.json({ seeded: result });
 });
 
 export default router;

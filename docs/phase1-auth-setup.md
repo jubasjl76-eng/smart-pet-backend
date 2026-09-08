@@ -22,6 +22,20 @@ npm run migrate            # apply pending
 npm run migrate -- --status
 ```
 
+On first boot the backend **seeds itself** (`src/database/seed.ts`, idempotent):
+the owner account (`SEED_OWNER_EMAIL` / `SEED_OWNER_PASSWORD`), the kennel, its 7
+preset automation rules and 4 starter pens. `SEED_DEMO=true` (set in the compose
+file) also adds a demo dam + sire and marks setup complete. So after
+`docker compose up` you can log straight in:
+
+```bash
+curl -s -XPOST localhost:3000/api/auth/login -H 'content-type: application/json' \
+  -d '{"email":"owner@smartpet.local","password":"changeme"}' | jq
+```
+
+Toggles: `SEED_RULES=false`, `SEED_PENS=false`, `SEED_DEMO` unset. In production,
+an owner with no `SEED_OWNER_PASSWORD` is **not** created (no weak default).
+
 Drive devices with the simulator:
 
 ```bash

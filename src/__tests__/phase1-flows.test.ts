@@ -19,6 +19,7 @@ const { issueRefreshToken, rotateRefreshToken, revokeRefreshToken } = await impo
 const { createInvite, acceptInvite } = await import('../auth/invites.js');
 const { createPairing, claimByPairing, listOpenPairings } = await import('../breeder/devices.js');
 const { runMigrations, listMigrations } = await import('../database/migrate.js');
+const { runSeed } = await import('../database/seed.js');
 
 let ownerId: string;
 
@@ -84,6 +85,42 @@ describe('migration runner', () => {
       const r = await db.query(`SELECT to_regclass($1) AS t`, [t]);
       expect((r.rows[0] as any).t).toBe(t);
     }
+  });
+});
+
+describe('boot seed', () => {
+  it('creates rules + pens on first run, is a no-op on the second', async () => {
+    const first = await runSeed();
+    expect(first.rulesInstalled).toBeGreaterThanOrEqual(6);
+    expect(first.pensCreated).toBe(4);
+    expect(first.animalsCreated).toBe(0); // SEED_DEMO not set
+
+    const second = await runSeed();
+    expect(second.rulesInstalled).toBe(0);
+    expect(second.pensCreated).toBe(0);
+
+    const pens = (await db.query(`SELECT COUNT(*)::int n FROM pens WHERE kennel_id='home'`)).rows[0] as any;
+    expect(pens.n).toBe(4);
+  });
+
+  it('demo mode adds a dam + sire and marks setup complete', async () => {
+    const r = await runSeed({ demo: true });
+    expect(r.animalsCreated).toBe(2);
+    expect(r.setupComplete).toBe(true);
+    const k = (await db.query(`SELECT setup_complete FROM kennels WHERE slug='home'`)).rows[0] as any;
+    expect(k.setup_complete).toBe(true);
+    // idempotent
+    expect((await runSeed({ demo: true })).animalsCreated).toBe(0);
+  });
+
+  it('respects SEED_PENS=false', async () => {
+    await db.query(`INSERT INTO kennels (slug, name) VALUES ('k2','K2')`);
+    process.env.BREEDER_KENNEL_SLUG = 'k2';
+    process.env.SEED_PENS = 'false';
+    const r = await runSeed();
+    expect(r.pensCreated).toBe(0);
+    delete process.env.SEED_PENS;
+    process.env.BREEDER_KENNEL_SLUG = 'home';
   });
 });
 
