@@ -157,3 +157,108 @@ export async function publishScheduleSet(
 export function isFoodLow(foodLevel: number | null | undefined): boolean {
   return typeof foodLevel === 'number' && foodLevel < 20;
 }
+
+// ── FeederBus: testable seam over publish + status-ack ──────────────────────
+import type { FeederStatusPayload } from '../types.js';
+
+const COMMAND_QOS = 2 as const;
+
+export interface FeederBus {
+  waitForStatus(
+    deviceId: string,
+    predicate: (status: FeederStatusPayload) => boolean,
+    timeoutMs: number
+  ): Promise<FeederStatusPayload>;
+  publishCommand(topic: string, payload: object): Promise<void>;
+}
+
+export type MemoryBus = FeederBus & {
+  published: Array<{ topic: string; payload: any; qos: number }>;
+};
+
+type Waiter = {
+  deviceId: string;
+  predicate: (s: FeederStatusPayload) => boolean;
+  settle: (s: FeederStatusPayload) => void;
+};
+
+const memoryWaiters = new Set<Waiter>();
+let activeBus: FeederBus | null = null;
+
+export function setFeederBus(bus: FeederBus): void {
+  activeBus = bus;
+}
+
+export function getFeederBus(): FeederBus {
+  return activeBus ?? liveBus;
+}
+
+/** Deliver a status message to any in-memory waiter whose predicate matches. */
+export function notifyStatus(status: FeederStatusPayload): void {
+  for (const w of Array.from(memoryWaiters)) {
+    if (w.deviceId === status.deviceId && w.predicate(status)) {
+      memoryWaiters.delete(w);
+      w.settle(status);
+    }
+  }
+}
+
+/** In-memory bus for tests: records published commands, resolved via notifyStatus(). */
+export function createMemoryBus(): MemoryBus {
+  const bus: MemoryBus = {
+    published: [],
+    publishCommand(topic: string, payload: object): Promise<void> {
+      bus.published.push({ topic, payload, qos: COMMAND_QOS });
+      return Promise.resolve();
+    },
+    waitForStatus(deviceId, predicate, timeoutMs) {
+      return new Promise<FeederStatusPayload>((resolve, reject) => {
+        const waiter: Waiter = {
+          deviceId,
+          predicate,
+          settle: (s) => {
+            clearTimeout(timer);
+            resolve(s);
+          },
+        };
+        const timer = setTimeout(() => {
+          memoryWaiters.delete(waiter);
+          reject(new Error(`Device ${deviceId} did not ack in ${timeoutMs}ms`));
+        }, timeoutMs);
+        memoryWaiters.add(waiter);
+      });
+    },
+  };
+  return bus;
+}
+
+/** Live bus backed by the real MQTT client + status EventEmitter. */
+const liveBus: FeederBus = {
+  waitForStatus(deviceId, predicate, timeoutMs) {
+    return new Promise<FeederStatusPayload>((resolve, reject) => {
+      const key = `status:${deviceId}`;
+      const timer = setTimeout(() => {
+        bus.off(key, onStatus);
+        reject(new Error(`Device ${deviceId} did not ack in ${timeoutMs}ms`));
+      }, timeoutMs);
+      function onStatus(p: StatusPayload) {
+        if (!predicate(p as unknown as FeederStatusPayload)) return;
+        clearTimeout(timer);
+        bus.off(key, onStatus);
+        resolve(p as unknown as FeederStatusPayload);
+      }
+      bus.on(key, onStatus);
+    });
+  },
+  publishCommand(topic: string, payload: object): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!client || !client.connected) {
+        reject(new Error('MQTT broker not connected'));
+        return;
+      }
+      client.publish(topic, JSON.stringify(payload), { qos: COMMAND_QOS }, (err) =>
+        err ? reject(err) : resolve()
+      );
+    });
+  },
+};

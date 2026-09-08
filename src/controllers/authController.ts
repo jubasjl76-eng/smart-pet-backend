@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { query, queryOne } from '../database/index.js';
+import { query, queryOne, execute } from '../database/index.js';
 import { generateToken, AuthRequest } from '../middleware/auth.js';
 import { isLocalRegisterAllowed, mapRole } from '../identity/roles.js';
 
@@ -22,11 +22,19 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
     const password_hash = await bcrypt.hash(password, 10);
-    const rows = await query<any>(
-      `INSERT INTO users (email, password_hash, name, role) VALUES ($1, $2, $3, 'owner') RETURNING id, email, name, role`,
+    // Register always creates role=owner. Never mints staff, whatever the body says.
+    await execute(
+      `INSERT INTO users (email, password_hash, name, role) VALUES ($1, $2, $3, 'owner')`,
       [email, password_hash, name || null]
     );
-    const user = rows[0];
+    const user = await queryOne<any>(
+      'SELECT id, email, name, role FROM users WHERE email = $1',
+      [email]
+    );
+    if (!user) {
+      res.status(500).json({ error: 'Registration failed' });
+      return;
+    }
     const token = generateToken(user.id, user.role);
     res.status(201).json({ message: 'User registered successfully', user: toJson(user), token });
   } catch (error) {

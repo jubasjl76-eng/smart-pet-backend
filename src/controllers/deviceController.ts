@@ -69,7 +69,7 @@ export const getDeviceLevels = async (req: AuthRequest, res: Response): Promise<
       res.status(404).json({ error: 'Device not found' });
       return;
     }
-    const device = mapDevice(row);
+    const device = mapDevice(row)!;
     res.json({
       deviceId: device.deviceId,
       status: device.status,

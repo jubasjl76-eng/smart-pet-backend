@@ -22,10 +22,10 @@
     "uuid": "^11.1.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
-    "@types/express-validator": "^2.20.33",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.10",

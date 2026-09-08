@@ -18,10 +18,10 @@ import authRoutes from './routes/auth.js';
 import deviceRoutes from './routes/devices.js';
 import scheduleRoutes from './routes/schedules.js';
 import eventRoutes from './routes/events.js';
-import collarRoutes from './routes/collar.js';
 import { auth, ownerOnly, adminOnly } from './middleware/auth.js';
 import { initializeDatabase, query, queryOne } from './database/index.js';
 import { startFeederMqtt } from './services/feederMqtt.js';
+import { mountBreeder, initBreederSchema, startBreederEngine } from './breeder/index.js';
 
 const app: Express = express();
 const PORT = 3000;
@@ -34,9 +34,13 @@ app.set('trust proxy', false);
 app.use(cors());
 app.use(express.json());
 
-initializeDatabase().then(() => startFeederMqtt()).catch((e) => {
-  console.error('[boot] database/mqtt failed', e);
-});
+initializeDatabase()
+  .then(() => initBreederSchema())
+  .then(() => startFeederMqtt())
+  .then(() => startBreederEngine())
+  .catch((e) => {
+    console.error('[boot] database/mqtt failed', e);
+  });
 
 app.get('/health', async (_req: Request, res: Response) => {
   res.json({
@@ -65,7 +69,6 @@ app.use('/api/auth', authRoutes);
 app.use('/api/devices', auth, ownerOnly, deviceRoutes);
 app.use('/api/schedules', auth, ownerOnly, scheduleRoutes);
 app.use('/api/events', auth, ownerOnly, eventRoutes);
-app.use('/api/collar', auth, collarRoutes);
 
 app.get('/api/admin/ping', auth, adminOnly, (req: Request, res: Response) => {
   res.json({ ok: true, role: (req as any).user?.role });
@@ -117,6 +120,10 @@ app.get('/api/stats', auth, ownerOnly, async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to fetch stats' });
   }
 });
+
+// Breeder platform: /api/breeder/* (care plans, care inbox, rules, maintenance,
+// emergency, weights/growth, multi-dog intake, consumables, wellness, meds).
+mountBreeder(app);
 
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: 'Not found' });
