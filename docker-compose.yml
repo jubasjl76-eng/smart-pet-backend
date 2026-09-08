@@ -28,21 +28,6 @@ services:
     volumes:
       - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
 
-  migrate:
-    build: .
-    container_name: smart-pet-migrate
-    command: ["npm", "run", "migrate"]
-    environment:
-      PG_HOST: postgres
-      PG_PORT: "5432"
-      PG_DATABASE: smartpet
-      PG_USER: postgres
-      PG_PASSWORD: postgres
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
-
   backend:
     build: .
     container_name: smart-pet-backend
@@ -66,8 +51,6 @@ services:
         condition: service_healthy
       mosquitto:
         condition: service_started
-      migrate:
-        condition: service_completed_successfully
 
   dashboard:
     build: ../backoffice-dashboard

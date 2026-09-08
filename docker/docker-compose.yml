@@ -3,7 +3,6 @@
 #
 #   postgres   :5432   Postgres 16
 #   mosquitto  :1883   MQTT broker (anonymous — laptop only; ACL model lives in the DB)
-#   migrate           one-shot: applies src/database/migrations/*.sql then exits
 #   backend    :3000   API + breeder platform + MQTT engine
 #   dashboard  :5173   staff/breeder web console — opt-in (Phase 2):
 #                        docker compose --profile dashboard up
@@ -38,23 +37,6 @@ services:
     volumes:
       - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
 
-  migrate:
-    build:
-      context: ..
-      dockerfile: Dockerfile
-    container_name: smart-pet-migrate
-    command: ["npm", "run", "migrate"]
-    environment:
-      PG_HOST: postgres
-      PG_PORT: "5432"
-      PG_DATABASE: smartpet
-      PG_USER: postgres
-      PG_PASSWORD: postgres
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
-
   backend:
     build:
       context: ..
@@ -81,8 +63,6 @@ services:
         condition: service_healthy
       mosquitto:
         condition: service_started
-      migrate:
-        condition: service_completed_successfully
 
   dashboard:
     build:

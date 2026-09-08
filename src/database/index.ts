@@ -191,15 +191,8 @@ export async function initializeDatabase(): Promise<void> {
   } catch (error) {
     console.error('[Database] Error creating tables:', error);
   }
-
-  // Forward-only SQL migrations (src/database/migrations/*.sql).
-  try {
-    const { runMigrations } = await import('./migrate.js');
-    const applied = await runMigrations(pool, (m) => console.log(m));
-    if (applied.length) console.log(`[Database] ${applied.length} migration(s) applied`);
-  } catch (error) {
-    console.error('[Database] Migration error:', error);
-  }
+  // Migrations run in src/index.ts *after* initBreederSchema(), since some
+  // migration files ALTER tables the breeder schema owns.
 }
 
 // Query helpers

@@ -21,7 +21,8 @@ import eventRoutes from './routes/events.js';
 import setupRoutes from './routes/setup.js';
 import userRoutes from './routes/users.js';
 import { auth, ownerOnly, adminOnly } from './middleware/auth.js';
-import { initializeDatabase, query, queryOne } from './database/index.js';
+import { initializeDatabase, query, queryOne, pool } from './database/index.js';
+import { runMigrations } from './database/migrate.js';
 import { startFeederMqtt } from './services/feederMqtt.js';
 import { mountBreeder, initBreederSchema, startBreederEngine } from './breeder/index.js';
 
@@ -38,6 +39,8 @@ app.use(express.json());
 
 initializeDatabase()
   .then(() => initBreederSchema())
+  .then(() => runMigrations(pool, (m) => console.log(m)))
+  .then((applied) => { if (applied.length) console.log(`[boot] ${applied.length} migration(s) applied`); })
   .then(() => startFeederMqtt())
   .then(() => startBreederEngine())
   .catch((e) => {

@@ -7,13 +7,15 @@ The "way in" to the breeder platform. Everything runs locally on `docker compose
 ```bash
 cd smart-pet-backend
 JWT_SECRET=dev-secret docker compose up --build
-#   postgres  :5432   ·  mosquitto :1883
-#   migrate           applies src/database/migrations/*.sql, then exits
-#   backend   :3000
-#   dashboard :5173   (shell until Phase 2; nginx proxies /api → backend)
+#   postgres  :5432   ·  mosquitto :1883   ·   backend :3000
+#   dashboard :5173   opt-in:  docker compose --profile dashboard up
 ```
 
-Migrations also run automatically on `npm run dev`. Standalone:
+The **backend** applies the schema on boot in order: base DDL → breeder DDL →
+`src/database/migrations/*.sql` (some migrations `ALTER` tables the breeder
+schema owns, so they must run last). Same on `npm run dev`.
+
+Standalone (self-sufficient — ensures the full schema first, then migrates):
 
 ```bash
 npm run migrate            # apply pending

@@ -4,9 +4,6 @@
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
 import { BREEDER_DDL } from '../breeder/schema.js';
 
 const db = new PGlite();
@@ -21,8 +18,22 @@ vi.mock('../database/index.js', () => ({
 const { issueRefreshToken, rotateRefreshToken, revokeRefreshToken } = await import('../auth/tokens.js');
 const { createInvite, acceptInvite } = await import('../auth/invites.js');
 const { createPairing, claimByPairing, listOpenPairings } = await import('../breeder/devices.js');
+const { runMigrations, listMigrations } = await import('../database/migrate.js');
 
 let ownerId: string;
+
+// pglite's `query` rejects multi-statement SQL (real `pg` accepts it in a simple
+// query), so route param-less multi-statement text through `exec`.
+const pgliteClient = {
+  query: async (t: string, p?: unknown[]) => {
+    const trimmed = t.trim().replace(/;\s*$/, '');
+    if (!p?.length && trimmed.includes(';')) {
+      await db.exec(t);
+      return { rows: [] as any[] };
+    }
+    return db.query(t, p as any[]);
+  },
+};
 
 beforeAll(async () => {
   await db.exec(`
@@ -41,8 +52,11 @@ beforeAll(async () => {
     );
   `);
   await db.exec(BREEDER_DDL);
-  const migDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'database', 'migrations');
-  await db.exec(readFileSync(join(migDir, '001_phase1_auth_setup.sql'), 'utf8'));
+  // Apply migrations the way boot does — through the runner, after the schema exists.
+  const applied = await runMigrations(pgliteClient);
+  if (!applied.includes('001_phase1_auth_setup.sql')) {
+    throw new Error('migration 001 was not applied: ' + applied.join(','));
+  }
   await db.query(`INSERT INTO kennels (slug, name) VALUES ('home', 'Home')`);
   const u = await db.query<{ id: string }>(
     `INSERT INTO users (email, password_hash, role, kennel_id) VALUES ('owner@x.io','x','owner','home') RETURNING id`
@@ -51,6 +65,27 @@ beforeAll(async () => {
 });
 
 afterAll(async () => { await db.close(); });
+
+describe('migration runner', () => {
+  it('recorded 001 and re-running is a no-op', async () => {
+    const rows = (await db.query(`SELECT name FROM _migrations`)).rows as { name: string }[];
+    expect(rows.map((r) => r.name)).toContain('001_phase1_auth_setup.sql');
+    const again = await runMigrations(pgliteClient);
+    expect(again).toEqual([]);
+    expect(listMigrations().length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('created the phase-1 tables + columns', async () => {
+    const cols = (await db.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = 'users'`
+    )).rows.map((r: any) => r.column_name);
+    expect(cols).toEqual(expect.arrayContaining(['active', 'kennel_id']));
+    for (const t of ['refresh_tokens', 'user_invites', 'device_pairings']) {
+      const r = await db.query(`SELECT to_regclass($1) AS t`, [t]);
+      expect((r.rows[0] as any).t).toBe(t);
+    }
+  });
+});
 
 describe('refresh tokens', () => {
   it('issue → rotate gives a new token, old one is revoked', async () => {
