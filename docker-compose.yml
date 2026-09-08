@@ -72,6 +72,7 @@ services:
   dashboard:
     build: ../backoffice-dashboard
     container_name: smart-pet-dashboard
+    profiles: ["dashboard"]
     restart: unless-stopped
     ports:
       - "5173:80"

@@ -5,7 +5,8 @@
 #   mosquitto  :1883   MQTT broker (anonymous — laptop only; ACL model lives in the DB)
 #   migrate           one-shot: applies src/database/migrations/*.sql then exits
 #   backend    :3000   API + breeder platform + MQTT engine
-#   dashboard  :5173   staff/breeder web console (nginx; proxies /api → backend)
+#   dashboard  :5173   staff/breeder web console — opt-in (Phase 2):
+#                        docker compose --profile dashboard up
 #
 # Point the simulator at this broker:
 #   cd ../smart-pet-simulator && npm run sim -- --scenario feeder-jam --broker mqtt://localhost:1883
@@ -88,6 +89,7 @@ services:
       context: ../../backoffice-dashboard
       dockerfile: Dockerfile
     container_name: smart-pet-dashboard
+    profiles: ["dashboard"]   # opt-in: `docker compose --profile dashboard up`
     restart: unless-stopped
     ports:
       - "5173:80"
