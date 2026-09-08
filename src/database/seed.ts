@@ -9,7 +9,8 @@
  *   SEED_STAFF_EMAIL / SEED_STAFF_PASSWORD   optional staff account
  *   SEED_RULES=false   don't install preset rules
  *   SEED_PENS=false    don't create the starter pens
- *   SEED_DEMO=true     add a demo dam + sire and mark setup complete
+ *   SEED_DEMO=true     add a demo dam + sire, a published litter for the public
+ *                     website, and mark setup complete
  *   BREEDER_KENNEL_SLUG / BREEDER_KENNEL_NAME   the kennel identity
  */
 import bcrypt from 'bcryptjs';
@@ -48,6 +49,96 @@ async function seedUser(
     [email, await bcrypt.hash(pass, 10), role === 'owner' ? 'Owner' : 'Staff', role, kennelSlug]
   );
   return true;
+}
+
+const PHOTO = (s: string) => `https://picsum.photos/seed/${s}/900/600`;
+const DEMO_HEALTH = JSON.stringify([
+  { name: 'Hips (BVA/KC)', result: '3:3' },
+  { name: 'Elbows', result: '0:0' },
+  { name: 'Eyes (annual)', result: 'Clear (2026)' },
+  { name: 'prcd-PRA', result: 'Clear (DNA)' },
+]);
+
+/**
+ * Publish the demo dam + sire and one litter so the public website shows a real
+ * (small) kennel the moment the stack comes up. Idempotent; best-effort — a
+ * pre-migration DB (old tests) just skips it.
+ */
+async function seedWebsiteDemo(slug: string): Promise<void> {
+  await execute(
+    `UPDATE kennels SET
+       breed_focus     = COALESCE(breed_focus, 'Golden Retriever'),
+       public_tagline  = COALESCE(public_tagline, 'Health-tested retrievers, raised underfoot in a working farmhouse.'),
+       public_about    = COALESCE(public_about, 'A small family programme. One or two litters a year from fully health-tested parents, every puppy raised in the kitchen.'),
+       public_email    = COALESCE(public_email, $2),
+       public_location = COALESCE(public_location, 'County Meath, Ireland'),
+       public_socials  = CASE WHEN public_socials = '[]'::jsonb
+                              THEN '[{"label":"Instagram","url":"https://instagram.com/example"}]'::jsonb
+                              ELSE public_socials END
+     WHERE slug = $1`,
+    [slug, process.env.SEED_OWNER_EMAIL || 'hello@example.com'],
+  );
+
+  for (const [name, dob, bio, photoSeed] of [
+    ['Bella', '2021-05-20', 'Foundation girl. Biddable, soft-mouthed, and the first to greet anyone at the gate.', 'demo-bella'],
+    ['Rocky', '2021-03-14', 'Blocky head, dense coat, an enormous will to please. Health-tested annually and used sparingly.', 'demo-rocky'],
+  ] as const) {
+    await execute(
+      `UPDATE animals SET
+         published = true,
+         breed = COALESCE(breed, 'Golden Retriever'),
+         dob = COALESCE(dob, $3::date),
+         titles = COALESCE(titles, 'IKC registered'),
+         bio = COALESCE(bio, $4),
+         health_tests = CASE WHEN health_tests = '[]'::jsonb THEN $5::jsonb ELSE health_tests END,
+         photos = CASE WHEN photos = '[]'::jsonb THEN $6::jsonb ELSE photos END
+       WHERE kennel_id = $1 AND name = $2`,
+      [slug, name, dob, bio, DEMO_HEALTH, JSON.stringify([PHOTO(photoSeed)])],
+    );
+  }
+
+  const existing = await queryOne<{ id: string }>(
+    `SELECT id FROM litters WHERE kennel_id = $1 AND name = 'Bella x Rocky, Summer'`,
+    [slug],
+  );
+  if (existing) return;
+
+  const dam = await queryOne<{ id: string }>(`SELECT id FROM animals WHERE kennel_id=$1 AND name='Bella'`, [slug]);
+  const sire = await queryOne<{ id: string }>(`SELECT id FROM animals WHERE kennel_id=$1 AND name='Rocky'`, [slug]);
+  const litter = await queryOne<{ id: string }>(
+    `INSERT INTO litters
+       (kennel_id, name, dam_id, sire_id, status, whelped_at, count_born, count_alive, published, public_description, photos)
+     VALUES ($1, 'Bella x Rocky, Summer', $2, $3, 'whelped', NOW() - INTERVAL '50 days', 5, 5, true, $4, $5::jsonb)
+     RETURNING id`,
+    [
+      slug, dam?.id ?? null, sire?.id ?? null,
+      'Five puppies raised in the kitchen with daily handling. Ready for their families at eight weeks, vet-checked and first-vaccinated.',
+      JSON.stringify([PHOTO('demo-litter-1'), PHOTO('demo-litter-2')]),
+    ],
+  );
+  if (!litter) return;
+
+  const pups = [
+    ['Green collar', 'male', 'Gold', 'available'],
+    ['Blue collar', 'female', 'Cream', 'available'],
+    ['Yellow collar', 'male', 'Gold', 'reserved'],
+  ] as const;
+  const grams = [480, 1900, 3400, 4900];
+  for (const [pname, sex, color, status] of pups) {
+    const pup = await queryOne<{ id: string }>(
+      `INSERT INTO puppies (kennel_id, litter_id, name, collar_color, sex, color, status, published, photos)
+       VALUES ($1,$2,$3,$3,$4,$5,$6,true,$7::jsonb) RETURNING id`,
+      [slug, litter.id, pname, sex, color, status, JSON.stringify([PHOTO(`demo-pup-${pname.split(' ')[0].toLowerCase()}`)])],
+    );
+    if (!pup) continue;
+    for (let i = 0; i < grams.length; i++) {
+      await execute(
+        `INSERT INTO weight_readings (kennel_id, puppy_id, grams, source, taken_at)
+         VALUES ($1,$2,$3,'manual', NOW() - INTERVAL '50 days' + make_interval(days => $4))`,
+        [slug, pup.id, grams[i], i * 14],
+      );
+    }
+  }
 }
 
 export async function runSeed(opts: { demo?: boolean } = {}): Promise<SeedResult> {
@@ -120,6 +211,13 @@ export async function runSeed(opts: { demo?: boolean } = {}): Promise<SeedResult
       `UPDATE kennels SET setup_complete = true, setup_completed_at = COALESCE(setup_completed_at, NOW()) WHERE slug = $1`,
       [slug]
     );
+
+    // Publish a small demo kennel for the public website (best-effort).
+    try {
+      await seedWebsiteDemo(slug);
+    } catch (e) {
+      console.warn('[seed] website demo skipped:', (e as Error).message);
+    }
   }
 
   const k = await queryOne<{ setup_complete: boolean }>(`SELECT setup_complete FROM kennels WHERE slug = $1`, [slug]);
