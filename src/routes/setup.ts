@@ -129,8 +129,8 @@ router.post('/seed-demo', async (req: AuthRequest, res: Response) => {
     res.status(403).json({ error: 'Only the kennel owner can do this' });
     return;
   }
-  // Same seed that runs on boot, forced with demo animals + setup-complete.
-  const result = await runSeed({ demo: true });
+  // Same seed as `npm run seed`: demo animals + the full console kennel.
+  const result = await runSeed({ demo: true, console: true });
   res.json({ seeded: result });
 });
 
