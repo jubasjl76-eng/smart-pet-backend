@@ -13,9 +13,9 @@ const router = Router();
 router.get('/', ah(async (req, res) => {
   const status = String(req.query.status ?? 'active');
   const where =
-    status === 'active' ? `status IN ('open','escalated') OR (status='snoozed' AND (snoozed_until IS NULL OR snoozed_until <= NOW()))`
+    status === 'active' ? `e.status IN ('open','escalated') OR (e.status='snoozed' AND (e.snoozed_until IS NULL OR e.snoozed_until <= NOW()))`
     : status === 'all' ? 'TRUE'
-    : 'status = $2';
+    : 'e.status = $2';
   const params: unknown[] = [req.kennelId];
   if (status !== 'active' && status !== 'all') params.push(status);
 
