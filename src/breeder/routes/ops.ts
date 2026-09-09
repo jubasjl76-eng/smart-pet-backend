@@ -6,6 +6,7 @@ import { predictMaintenance, type HealthCounter } from '../logic/maintenance.js'
 import { generateRotation } from '../logic/enrichment.js';
 import { raiseException } from '../exceptions.js';
 import { publishCommand } from '../../services/feederMqtt.js';
+import { channelConfigured } from '../engine/channels.js';
 
 const router = Router();
 
@@ -294,6 +295,13 @@ router.post('/offline-journal', ah(async (req, res) => {
 }));
 
 // ══ Notification preferences ═════════════════════════════════════════════
+
+/** Which channels this deployment can actually deliver on (env-configured). */
+router.get('/notification-channels', ah(async (_req, res) => {
+  const list = ['log', 'webhook', 'email', 'sms', 'siren', 'push'];
+  res.json({ channels: Object.fromEntries(list.map((c) => [c, channelConfigured(c)])) });
+}));
+
 router.get('/notification-prefs', ah(async (req, res) => {
   const row = await queryOne(`SELECT * FROM notification_prefs WHERE user_id=$1`, [req.user?.id]);
   res.json({ prefs: row ?? null });
