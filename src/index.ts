@@ -17,8 +17,9 @@ import { auth, ownerOnly, adminOnly } from './middleware/auth.js';
 import { initializeDatabase, query, queryOne, pool } from './database/index.js';
 import { runMigrations } from './database/migrate.js';
 import { runSeed } from './database/seed.js';
-import { startFeederMqtt } from './services/feederMqtt.js';
-import { mountBreeder, initBreederSchema, startBreederEngine } from './breeder/index.js';
+import { startFeederMqtt, stopFeederMqtt, isFeederMqttConnected } from './services/feederMqtt.js';
+import { mountBreeder, initBreederSchema, startBreederEngine, stopBreederEngine } from './breeder/index.js';
+import { getFlags } from './services/flags.js';
 
 const app: Express = express();
 const PORT = 3000;
@@ -43,14 +44,44 @@ initializeDatabase()
     console.error('[boot] database/mqtt failed', e);
   });
 
+const VERSION = '3.1.0-feeder-command';
+let shuttingDown = false;
+
+// Liveness — the process is up. Always 200.
 app.get('/health', async (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
     mode: BACKEND_MODE,
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    version: '3.1.0-feeder-command',
+    version: VERSION,
     port: PORT,
+  });
+});
+
+// Readiness — safe to route traffic. 503 until the DB answers and MQTT is
+// connected, and while draining. The ALB target group health-checks this.
+app.get('/ready', async (_req: Request, res: Response) => {
+  let db = false;
+  try {
+    await query('SELECT 1');
+    db = true;
+  } catch {
+    db = false;
+  }
+  const mqtt = isFeederMqttConnected();
+  const ok = db && mqtt && !shuttingDown;
+  res.status(ok ? 200 : 503).json({ status: ok ? 'ready' : 'not-ready', db, mqtt, shuttingDown });
+});
+
+// Non-secret runtime config for the dashboard / app (no auth): feature flags,
+// environment, version. Never exposes secrets.
+app.get('/api/config', async (_req: Request, res: Response) => {
+  res.json({
+    env: config.NODE_ENV,
+    mode: BACKEND_MODE,
+    version: VERSION,
+    flags: await getFlags(),
   });
 });
 
@@ -137,12 +168,36 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Smart Pet API on http://localhost:${PORT} mode=${BACKEND_MODE}`);
   console.log('MQTT command: kennel/{kennelId}/feeder/{deviceId}/command QoS 2');
   console.log('MQTT status:  kennel/{kennelId}/feeder/{deviceId}/status retained QoS 1');
   console.log('POST /api/devices/claim issues device:<deviceId> MQTT creds once');
   console.log('POST /api/devices/:id/feed waits for device ack+status');
 });
+
+async function shutdown(signal?: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true; // /ready → 503
+  console.log(`\n[shutdown] ${signal ?? 'signal'} — draining...`);
+
+  const guard = setTimeout(() => {
+    console.error('[shutdown] drain timed out, forcing exit');
+    process.exit(1);
+  }, 10_000);
+  guard.unref();
+
+  server.close(async () => {
+    stopBreederEngine();
+    stopFeederMqtt();
+    await pool.end().catch(() => {});
+    clearTimeout(guard);
+    console.log('[shutdown] stopped');
+    process.exit(0);
+  });
+}
+
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
 
 export default app;
