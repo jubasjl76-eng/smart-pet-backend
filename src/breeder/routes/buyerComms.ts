@@ -142,7 +142,7 @@ router.get('/puppies/:pupId/go-home-pack', ah(async (req, res) => {
   );
   if (!pup) return bad(res, 'Puppy not found', 404);
 
-  const [buyer, weights, vaccinations] = await Promise.all([
+  const [buyer, weights, vaccinations, documents] = await Promise.all([
     pup.buyer_id
       ? queryOne(`SELECT name, email, phone FROM buyers WHERE id = $1`, [pup.buyer_id])
       : Promise.resolve(null),
@@ -153,6 +153,15 @@ router.get('/puppies/:pupId/go-home-pack', ah(async (req, res) => {
         WHERE puppy_id = $1 AND given_on IS NOT NULL ORDER BY given_on`,
       [pup.id],
     ),
+    query(
+      `SELECT id, kind, title, filename, (body IS NOT NULL) AS generated, created_at
+         FROM documents
+        WHERE kennel_id = $1
+          AND ( (subject_type = 'puppy' AND subject_id = $2)
+             OR (subject_type = 'buyer' AND subject_id = $3) )
+        ORDER BY created_at DESC`,
+      [req.kennelId, pup.id, pup.buyer_id ?? null],
+    ),
   ]);
 
   res.json({
@@ -160,7 +169,7 @@ router.get('/puppies/:pupId/go-home-pack', ah(async (req, res) => {
     buyer,
     weightSeries: weights,
     vaccinations,
-    documents: [], // Phase 7
+    documents,
     generatedAt: new Date().toISOString(),
   });
 }));
