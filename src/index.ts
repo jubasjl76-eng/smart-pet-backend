@@ -18,8 +18,14 @@ import { initializeDatabase, query, queryOne, pool } from './database/index.js';
 import { runMigrations } from './database/migrate.js';
 import { runSeed } from './database/seed.js';
 import { startFeederMqtt, stopFeederMqtt, isFeederMqttConnected } from './services/feederMqtt.js';
-import { mountBreeder, initBreederSchema, startBreederEngine, stopBreederEngine } from './breeder/index.js';
+import {
+  mountBreeder,
+  initBreederSchema,
+  startBreederEngine,
+  stopBreederEngine,
+} from './breeder/index.js';
 import { getFlags } from './services/flags.js';
+import { buildOpenApiDoc, docsHtml } from './openapi/index.js';
 
 const app: Express = express();
 const PORT = 3000;
@@ -33,10 +39,31 @@ app.set('trust proxy', false);
 app.use(cors());
 app.use(express.json());
 
+// API versioning (Phase 14, A1). `/api/v1/*` is the versioned path; bare `/api/*`
+// is a deprecated alias for the transition window — it still works but carries
+// Deprecation + Sunset headers. See docs/api-versioning.md.
+const API_SUNSET = 'Fri, 01 Jan 2027 00:00:00 GMT';
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const u = req.url;
+  if (u === '/api/v1' || u.startsWith('/api/v1/') || u.startsWith('/api/v1?')) {
+    req.url = '/api' + u.slice('/api/v1'.length);
+  } else if (
+    (u === '/api' || u.startsWith('/api/') || u.startsWith('/api?')) &&
+    !u.startsWith('/api/config')
+  ) {
+    res.setHeader('Deprecation', 'true');
+    res.setHeader('Sunset', API_SUNSET);
+    res.setHeader('Link', '</docs>; rel="describedby"');
+  }
+  next();
+});
+
 initializeDatabase()
   .then(() => initBreederSchema())
   .then(() => runMigrations(pool, (m) => console.log(m)))
-  .then((applied) => { if (applied.length) console.log(`[boot] ${applied.length} migration(s) applied`); })
+  .then((applied) => {
+    if (applied.length) console.log(`[boot] ${applied.length} migration(s) applied`);
+  })
   .then(() => runSeed())
   .then(() => startFeederMqtt())
   .then(() => startBreederEngine())
@@ -74,6 +101,11 @@ app.get('/ready', async (_req: Request, res: Response) => {
   res.status(ok ? 200 : 503).json({ status: ok ? 'ready' : 'not-ready', db, mqtt, shuttingDown });
 });
 
+// OpenAPI spec + a Scalar reference UI (Phase 14). Routes are added to the spec
+// file-by-file as they move onto the zod registry.
+app.get('/openapi.json', (_req: Request, res: Response) => res.json(buildOpenApiDoc()));
+app.get('/docs', (_req: Request, res: Response) => res.type('html').send(docsHtml));
+
 // Non-secret runtime config for the dashboard / app (no auth): feature flags,
 // environment, version. Never exposes secrets.
 app.get('/api/config', async (_req: Request, res: Response) => {
@@ -88,7 +120,8 @@ app.get('/api/config', async (_req: Request, res: Response) => {
 function closed(_req: Request, res: Response) {
   res.status(403).json({
     error: 'closed',
-    message: 'Device path is MQTT status on kennel/{kennelId}/feeder/{deviceId}/status. Owner JWT is not a device credential. X-API-Key is not a product path.',
+    message:
+      'Device path is MQTT status on kennel/{kennelId}/feeder/{deviceId}/status. Owner JWT is not a device credential. X-API-Key is not a product path.',
   });
 }
 app.post('/api/devices/ingest', closed);
@@ -111,7 +144,9 @@ app.get('/api/admin/ping', auth, adminOnly, (req: Request, res: Response) => {
 app.get('/api/pet', auth, async (req: Request, res: Response) => {
   const userId = (req as any).user?.id;
   try {
-    const pet = await queryOne<any>('SELECT id, name FROM pets WHERE user_id = $1 LIMIT 1', [userId]);
+    const pet = await queryOne<any>('SELECT id, name FROM pets WHERE user_id = $1 LIMIT 1', [
+      userId,
+    ]);
     res.json({ pet: pet || { name: null } });
   } catch {
     res.status(404).json({ error: 'Not found' });
@@ -126,12 +161,22 @@ app.put('/api/pet', auth, async (req: Request, res: Response) => {
     return;
   }
   try {
-    const existing = await queryOne<any>('SELECT id FROM pets WHERE user_id = $1 LIMIT 1', [userId]);
+    const existing = await queryOne<any>('SELECT id FROM pets WHERE user_id = $1 LIMIT 1', [
+      userId,
+    ]);
     if (existing) {
-      const pet = await queryOne<any>('UPDATE pets SET name = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name', [name, existing.id]);
+      const pet = await queryOne<any>(
+        'UPDATE pets SET name = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name',
+        [name, existing.id],
+      );
       res.json({ pet });
     } else {
-      const pet = (await query<any>('INSERT INTO pets (user_id, name) VALUES ($1, $2) RETURNING id, name', [userId, name]))[0];
+      const pet = (
+        await query<any>('INSERT INTO pets (user_id, name) VALUES ($1, $2) RETURNING id, name', [
+          userId,
+          name,
+        ])
+      )[0];
       res.json({ pet });
     }
   } catch {
