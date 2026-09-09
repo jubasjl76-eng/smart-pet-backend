@@ -1,6 +1,8 @@
 import { Router } from 'express';
+import { z } from '@jubasjl76-eng/shared';
 import { query, queryOne, execute } from '../../database/index.js';
-import { ah, bad, need } from '../http.js';
+import { ah, bad } from '../http.js';
+import { apiRoute } from '../../openapi/index.js';
 import { consumableStatus, estimateDailyUse } from '../logic/consumables.js';
 import { predictMaintenance, type HealthCounter } from '../logic/maintenance.js';
 import { generateRotation } from '../logic/enrichment.js';
@@ -9,9 +11,17 @@ import { publishCommand } from '../../services/feederMqtt.js';
 import { channelConfigured } from '../engine/channels.js';
 
 const router = Router();
+const T = ['breeder: ops'];
 
 // ══ Consumables (warn, do not auto-order) ═════════════════════════════════
-router.get('/consumables', ah(async (req, res) => {
+router.get(
+  '/consumables',
+  apiRoute({
+    method: 'get', path: '/api/breeder/ops/consumables', tags: T, secure: true,
+    summary: 'Consumables with usage estimate + stock status.',
+    responses: { 200: { description: 'ok', schema: z.object({ consumables: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const rows = await query<any>(`SELECT * FROM consumables WHERE kennel_id=$1 ORDER BY category, name`, [req.kennelId]);
   const out = await Promise.all(rows.map(async (c) => {
     let dailyUse = c.daily_use ?? null;
@@ -27,11 +37,29 @@ router.get('/consumables', ah(async (req, res) => {
     return { ...c, estimatedDailyUse: dailyUse, status };
   }));
   res.json({ consumables: out });
-}));
+}),
+);
 
-router.post('/consumables', ah(async (req, res) => {
-  const err = need(req.body, ['name']);
-  if (err) return bad(res, err);
+router.post(
+  '/consumables',
+  apiRoute({
+    method: 'post', path: '/api/breeder/ops/consumables', tags: T, secure: true,
+    summary: 'Add a consumable to track.',
+    request: {
+      body: z.object({
+        name: z.string().min(1),
+        category: z.string().optional(),
+        unit: z.string().optional(),
+        onHand: z.coerce.number().optional(),
+        lowThreshold: z.coerce.number().optional(),
+        dailyUse: z.coerce.number().nullable().optional(),
+        linkedDeviceId: z.string().nullable().optional(),
+        linkedFoodSku: z.string().nullable().optional(),
+      }),
+    },
+    responses: { 201: { description: 'created' } },
+  }),
+  ah(async (req, res) => {
   const b = req.body;
   const row = await queryOne(
     `INSERT INTO consumables (kennel_id, name, category, unit, on_hand, low_threshold, daily_use, linked_device_id, linked_food_sku)
@@ -40,9 +68,18 @@ router.post('/consumables', ah(async (req, res) => {
      b.dailyUse ?? null, b.linkedDeviceId ?? null, b.linkedFoodSku ?? null]
   );
   res.status(201).json({ consumable: row });
-}));
+}),
+);
 
-router.patch('/consumables/:id', ah(async (req, res) => {
+router.patch(
+  '/consumables/:id',
+  apiRoute({
+    method: 'patch', path: '/api/breeder/ops/consumables/{id}', tags: T, secure: true,
+    summary: 'Update a consumable (partial).',
+    request: { params: z.object({ id: z.string() }) },
+    responses: { 200: { description: 'ok' }, 404: { description: 'not found' } },
+  }),
+  ah(async (req, res) => {
   const camel: Record<string, string> = { onHand: 'on_hand', lowThreshold: 'low_threshold', dailyUse: 'daily_use', linkedDeviceId: 'linked_device_id', linkedFoodSku: 'linked_food_sku' };
   const allowed = ['name', 'category', 'unit', 'on_hand', 'low_threshold', 'daily_use', 'linked_device_id', 'linked_food_sku'];
   const sets: string[] = []; const vals: unknown[] = [req.params.id, req.kennelId];
@@ -54,10 +91,18 @@ router.patch('/consumables/:id', ah(async (req, res) => {
   const row = await queryOne(`UPDATE consumables SET ${sets.join(', ')}, updated_at=NOW() WHERE id=$1 AND kennel_id=$2 RETURNING *`, vals);
   if (!row) return bad(res, 'Consumable not found', 404);
   res.json({ consumable: row });
-}));
+}),
+);
 
 /** Sweep consumables and raise an exception for anything low/critical/out. */
-router.post('/consumables/sweep', ah(async (req, res) => {
+router.post(
+  '/consumables/sweep',
+  apiRoute({
+    method: 'post', path: '/api/breeder/ops/consumables/sweep', tags: T, secure: true,
+    summary: 'Raise an exception for any low / critical / out consumable.',
+    responses: { 200: { description: 'ok', schema: z.object({ raised: z.number() }) } },
+  }),
+  ah(async (req, res) => {
   const rows = await query<any>(`SELECT * FROM consumables WHERE kennel_id=$1`, [req.kennelId]);
   let raised = 0;
   for (const c of rows) {
@@ -73,10 +118,18 @@ router.post('/consumables/sweep', ah(async (req, res) => {
     raised++;
   }
   res.json({ raised });
-}));
+}),
+);
 
 // ══ Predictive maintenance ════════════════════════════════════════════════
-router.get('/maintenance', ah(async (req, res) => {
+router.get(
+  '/maintenance',
+  apiRoute({
+    method: 'get', path: '/api/breeder/ops/maintenance', tags: T, secure: true,
+    summary: 'Device health counters + maintenance predictions.',
+    responses: { 200: { description: 'ok', schema: z.object({ devices: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const rows = await query<any>(
     `SELECT h.*, d.name AS device_name, d.device_type
        FROM device_health_counters h
@@ -93,11 +146,21 @@ router.get('/maintenance', ah(async (req, res) => {
       .metrics.push({ ...r, prediction: pred });
   }
   res.json({ devices: Object.values(byDevice) });
-}));
+}),
+);
 
-router.put('/maintenance/:deviceId/:metric/limit', ah(async (req, res) => {
-  const err = need(req.body, ['serviceLimit']);
-  if (err) return bad(res, err);
+router.put(
+  '/maintenance/:deviceId/:metric/limit',
+  apiRoute({
+    method: 'put', path: '/api/breeder/ops/maintenance/{deviceId}/{metric}/limit', tags: T, secure: true,
+    summary: 'Set the service limit for a device metric.',
+    request: {
+      params: z.object({ deviceId: z.string(), metric: z.string() }),
+      body: z.object({ serviceLimit: z.coerce.number() }),
+    },
+    responses: { 200: { description: 'ok' } },
+  }),
+  ah(async (req, res) => {
   await execute(
     `INSERT INTO device_health_counters (kennel_id, device_id, metric, value, service_limit)
      VALUES ($1,$2,$3,0,$4)
@@ -105,10 +168,19 @@ router.put('/maintenance/:deviceId/:metric/limit', ah(async (req, res) => {
     [req.kennelId, req.params.deviceId, req.params.metric, req.body.serviceLimit]
   );
   res.json({ ok: true });
-}));
+}),
+);
 
 /** Mark a component serviced: reset the counter and clear open maintenance exceptions. */
-router.post('/maintenance/:deviceId/:metric/serviced', ah(async (req, res) => {
+router.post(
+  '/maintenance/:deviceId/:metric/serviced',
+  apiRoute({
+    method: 'post', path: '/api/breeder/ops/maintenance/{deviceId}/{metric}/serviced', tags: T, secure: true,
+    summary: 'Mark a component serviced (resets counter, clears exceptions).',
+    request: { params: z.object({ deviceId: z.string(), metric: z.string() }) },
+    responses: { 200: { description: 'ok' } },
+  }),
+  ah(async (req, res) => {
   await execute(
     `UPDATE device_health_counters SET value=0, serviced_at=NOW(), updated_at=NOW()
       WHERE device_id=$1 AND metric=$2 AND kennel_id=$3`,
@@ -120,10 +192,18 @@ router.post('/maintenance/:deviceId/:metric/serviced', ah(async (req, res) => {
     [req.kennelId, req.params.deviceId]
   );
   res.json({ ok: true });
-}));
+}),
+);
 
 // ══ Emergency mode ════════════════════════════════════════════════════════
-router.get('/emergency/status', ah(async (req, res) => {
+router.get(
+  '/emergency/status',
+  apiRoute({
+    method: 'get', path: '/api/breeder/ops/emergency/status', tags: T, secure: true,
+    summary: 'Current emergency state + last event.',
+    responses: { 200: { description: 'ok' } },
+  }),
+  ah(async (req, res) => {
   const k = await queryOne(
     `SELECT emergency_state, emergency_mode, emergency_since FROM kennels WHERE slug=$1`, [req.kennelId]
   );
@@ -131,10 +211,18 @@ router.get('/emergency/status', ah(async (req, res) => {
     `SELECT * FROM emergency_events WHERE kennel_id=$1 ORDER BY started_at DESC LIMIT 1`, [req.kennelId]
   );
   res.json({ kennel: k, lastEvent: last });
-}));
+}),
+);
 
 /** Evacuation manifest: pen → animals → owner/vet contacts. Printed / pushed to staff phones. */
-router.get('/emergency/manifest', ah(async (req, res) => {
+router.get(
+  '/emergency/manifest',
+  apiRoute({
+    method: 'get', path: '/api/breeder/ops/emergency/manifest', tags: T, secure: true,
+    summary: 'Evacuation manifest: pen → animals → contacts.',
+    responses: { 200: { description: 'ok' } },
+  }),
+  ah(async (req, res) => {
   const rows = await query(
     `SELECT p.name AS pen, p.id AS pen_id,
             a.name AS animal, a.microchip, a.collar_device_id,
@@ -147,9 +235,23 @@ router.get('/emergency/manifest', ah(async (req, res) => {
     [req.kennelId]
   );
   res.json({ manifest: rows, generatedAt: new Date().toISOString() });
-}));
+}),
+);
 
-router.post('/emergency/trigger', ah(async (req, res) => {
+router.post(
+  '/emergency/trigger',
+  apiRoute({
+    method: 'post', path: '/api/breeder/ops/emergency/trigger', tags: T, secure: true,
+    summary: 'Trigger emergency mode (fans out door unlocks).',
+    request: {
+      body: z.object({
+        mode: z.enum(['fire', 'flood', 'evac', 'drill']).optional(),
+        note: z.string().nullable().optional(),
+      }),
+    },
+    responses: { 200: { description: 'ok' }, 400: { description: 'invalid mode' } },
+  }),
+  ah(async (req, res) => {
   const mode = req.body?.mode ?? 'evac';
   if (!['fire', 'flood', 'evac', 'drill'].includes(mode)) return bad(res, 'Invalid mode');
 
@@ -191,9 +293,17 @@ router.post('/emergency/trigger', ah(async (req, res) => {
     });
   }
   res.json({ event: evt, doorActions: actions });
-}));
+}),
+);
 
-router.post('/emergency/end', ah(async (req, res) => {
+router.post(
+  '/emergency/end',
+  apiRoute({
+    method: 'post', path: '/api/breeder/ops/emergency/end', tags: T, secure: true,
+    summary: 'End emergency mode + resolve its exceptions.',
+    responses: { 200: { description: 'ok' } },
+  }),
+  ah(async (req, res) => {
   await execute(
     `UPDATE kennels SET emergency_state='normal', emergency_mode=NULL, emergency_since=NULL WHERE slug=$1`,
     [req.kennelId]
@@ -207,10 +317,19 @@ router.post('/emergency/end', ah(async (req, res) => {
     [req.kennelId]
   );
   res.json({ ok: true });
-}));
+}),
+);
 
 // ══ Enrichment / play rotation ════════════════════════════════════════════
-router.get('/enrichment', ah(async (req, res) => {
+router.get(
+  '/enrichment',
+  apiRoute({
+    method: 'get', path: '/api/breeder/ops/enrichment', tags: T, secure: true,
+    summary: 'Enrichment sessions for a day (default today).',
+    request: { query: z.object({ date: z.string().optional() }) },
+    responses: { 200: { description: 'ok', schema: z.object({ sessions: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const day = String(req.query.date ?? new Date().toISOString().slice(0, 10));
   const rows = await query(
     `SELECT e.*, a.name AS animal_name FROM enrichment_sessions e
@@ -220,12 +339,28 @@ router.get('/enrichment', ah(async (req, res) => {
     [req.kennelId, day]
   );
   res.json({ sessions: rows });
-}));
+}),
+);
 
-router.post('/enrichment/generate', ah(async (req, res) => {
+router.post(
+  '/enrichment/generate',
+  apiRoute({
+    method: 'post', path: '/api/breeder/ops/enrichment/generate', tags: T, secure: true,
+    summary: 'Generate an enrichment rotation for a day.',
+    request: {
+      body: z.object({
+        stations: z.array(z.string()).min(1),
+        animalIds: z.array(z.string()).optional(),
+        date: z.string().optional(),
+        dayStart: z.string().optional(),
+        dayEnd: z.string().optional(),
+        slotMinutes: z.coerce.number().optional(),
+      }),
+    },
+    responses: { 201: { description: 'created' } },
+  }),
+  ah(async (req, res) => {
   const b = req.body;
-  const err = need(b, ['stations']);
-  if (err) return bad(res, err);
   const animals = b.animalIds?.length
     ? b.animalIds
     : (await query<{ id: string }>(`SELECT id FROM animals WHERE kennel_id=$1 AND status='active'`, [req.kennelId])).map((r) => r.id);
@@ -247,9 +382,21 @@ router.post('/enrichment/generate', ah(async (req, res) => {
     );
   }
   res.status(201).json({ created: planned.length, planned });
-}));
+}),
+);
 
-router.post('/enrichment/:id/complete', ah(async (req, res) => {
+router.post(
+  '/enrichment/:id/complete',
+  apiRoute({
+    method: 'post', path: '/api/breeder/ops/enrichment/{id}/complete', tags: T, secure: true,
+    summary: 'Mark an enrichment session done.',
+    request: {
+      params: z.object({ id: z.string() }),
+      body: z.object({ activityMinutes: z.coerce.number().nullable().optional() }),
+    },
+    responses: { 200: { description: 'ok' }, 404: { description: 'not found' } },
+  }),
+  ah(async (req, res) => {
   const row = await queryOne(
     `UPDATE enrichment_sessions SET status='done', activity_minutes=$3
       WHERE id=$1 AND kennel_id=$2 RETURNING *`,
@@ -257,10 +404,18 @@ router.post('/enrichment/:id/complete', ah(async (req, res) => {
   );
   if (!row) return bad(res, 'Session not found', 404);
   res.json({ session: row });
-}));
+}),
+);
 
 // ══ Offline / power-cut journal ══════════════════════════════════════════
-router.get('/offline-journal', ah(async (req, res) => {
+router.get(
+  '/offline-journal',
+  apiRoute({
+    method: 'get', path: '/api/breeder/ops/offline-journal', tags: T, secure: true,
+    summary: 'Recent offline / power-cut journal entries.',
+    responses: { 200: { description: 'ok', schema: z.object({ journal: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const rows = await query(
     `SELECT j.*, d.name AS device_name FROM offline_journal j
        LEFT JOIN devices d ON d.device_id = j.device_id
@@ -268,12 +423,28 @@ router.get('/offline-journal', ah(async (req, res) => {
     [req.kennelId]
   );
   res.json({ journal: rows });
-}));
+}),
+);
 
 /** Device reports, on reconnect, the window it was dark and what it did offline. */
-router.post('/offline-journal', ah(async (req, res) => {
-  const err = need(req.body, ['deviceId', 'wentOfflineAt']);
-  if (err) return bad(res, err);
+router.post(
+  '/offline-journal',
+  apiRoute({
+    method: 'post', path: '/api/breeder/ops/offline-journal', tags: T, secure: true,
+    summary: 'Record an offline / power-cut window for a device.',
+    request: {
+      body: z.object({
+        deviceId: z.string().min(1),
+        wentOfflineAt: z.string().min(1),
+        cameOnlineAt: z.string().nullable().optional(),
+        cause: z.string().optional(),
+        missedActions: z.array(z.record(z.string(), z.unknown())).optional(),
+        backfilled: z.boolean().optional(),
+      }),
+    },
+    responses: { 200: { description: 'ok' } },
+  }),
+  ah(async (req, res) => {
   const b = req.body;
   const row = await queryOne(
     `INSERT INTO offline_journal (kennel_id, device_id, went_offline_at, came_online_at, cause, missed_actions, backfilled)
@@ -292,22 +463,56 @@ router.post('/offline-journal', ah(async (req, res) => {
     });
   }
   res.json({ entry: row });
-}));
+}),
+);
 
 // ══ Notification preferences ═════════════════════════════════════════════
 
 /** Which channels this deployment can actually deliver on (env-configured). */
-router.get('/notification-channels', ah(async (_req, res) => {
+router.get(
+  '/notification-channels',
+  apiRoute({
+    method: 'get', path: '/api/breeder/ops/notification-channels', tags: T, secure: true,
+    summary: 'Which notification channels this deployment can deliver on.',
+    responses: { 200: { description: 'ok' } },
+  }),
+  ah(async (_req, res) => {
   const list = ['log', 'webhook', 'email', 'sms', 'siren', 'push'];
   res.json({ channels: Object.fromEntries(list.map((c) => [c, channelConfigured(c)])) });
-}));
+}),
+);
 
-router.get('/notification-prefs', ah(async (req, res) => {
+router.get(
+  '/notification-prefs',
+  apiRoute({
+    method: 'get', path: '/api/breeder/ops/notification-prefs', tags: T, secure: true,
+    summary: 'The current user’s notification preferences.',
+    responses: { 200: { description: 'ok' } },
+  }),
+  ah(async (req, res) => {
   const row = await queryOne(`SELECT * FROM notification_prefs WHERE user_id=$1`, [req.user?.id]);
   res.json({ prefs: row ?? null });
-}));
+}),
+);
 
-router.put('/notification-prefs', ah(async (req, res) => {
+router.put(
+  '/notification-prefs',
+  apiRoute({
+    method: 'put', path: '/api/breeder/ops/notification-prefs', tags: T, secure: true,
+    summary: 'Upsert the current user’s notification preferences.',
+    request: {
+      body: z.object({
+        channels: z.array(z.string()).optional(),
+        quietHours: z.record(z.string(), z.unknown()).nullable().optional(),
+        escalation: z.array(z.record(z.string(), z.unknown())).optional(),
+        webhookUrl: z.string().nullable().optional(),
+        smsNumber: z.string().nullable().optional(),
+        email: z.string().nullable().optional(),
+      }),
+    },
+    responses: { 200: { description: 'ok' } },
+  }),
+  ah(async (req, res) => {
   const b = req.body;
   const row = await queryOne(
     `INSERT INTO notification_prefs (user_id, kennel_id, channels, quiet_hours, escalation, webhook_url, sms_number, email)
@@ -322,6 +527,7 @@ router.put('/notification-prefs', ah(async (req, res) => {
      b.webhookUrl ?? null, b.smsNumber ?? null, b.email ?? null]
   );
   res.json({ prefs: row });
-}));
+}),
+);
 
 export default router;
