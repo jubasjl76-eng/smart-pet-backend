@@ -6,19 +6,40 @@
  * with every other tenant route so it shares the auth + kennel guard.
  */
 import { Router } from 'express';
+import { z } from '@jubasjl76-eng/shared';
 import { query, queryOne, execute } from '../../database/index.js';
-import { ah, bad, need } from '../http.js';
+import { ah, bad } from '../http.js';
+import { apiRoute } from '../../openapi/index.js';
 import { publishCommand } from '../../services/feederMqtt.js';
 import { logAccess } from '../accessLog.js';
 import { deviceTarget, deviceFwStatus, type Rollout } from '../logic/rollout.js';
 
 const router = Router();
+const T = ['breeder: fleet'];
 const OTA_PER_TICK = 10; // ponytail: flat cap; make it per-kennel if a fleet gets big
 
 // ── Firmware registry ──────────────────────────────────────────────────────
-router.post('/firmware', ah(async (req, res) => {
-  const err = need(req.body ?? {}, ['deviceType', 'version', 'url', 'sha256']);
-  if (err) return bad(res, err);
+router.post(
+  '/firmware',
+  apiRoute({
+    method: 'post', path: '/api/breeder/fleet/firmware', tags: T, secure: true,
+    summary: 'Register a firmware build.',
+    request: {
+      body: z.object({
+        deviceType: z.string().min(1),
+        version: z.string().min(1),
+        url: z.string().min(1),
+        sha256: z.string().min(1),
+        channel: z.string().optional(),
+        signature: z.string().nullable().optional(),
+        sizeBytes: z.coerce.number().nullable().optional(),
+        minVersion: z.string().nullable().optional(),
+        notes: z.string().nullable().optional(),
+      }),
+    },
+    responses: { 201: { description: 'created' }, 409: { description: 'already exists' } },
+  }),
+  ah(async (req, res) => {
   const b = req.body;
   const row = await queryOne(
     `INSERT INTO firmware (device_type, version, channel, url, sha256, signature, size_bytes, min_version, notes, created_by)
@@ -33,9 +54,18 @@ router.post('/firmware', ah(async (req, res) => {
   );
   if (!row) return bad(res, `firmware ${b.deviceType} ${b.version} already exists`, 409);
   res.status(201).json({ firmware: row });
-}));
+}),
+);
 
-router.get('/firmware', ah(async (req, res) => {
+router.get(
+  '/firmware',
+  apiRoute({
+    method: 'get', path: '/api/breeder/fleet/firmware', tags: T, secure: true,
+    summary: 'List firmware builds (optionally by deviceType).',
+    request: { query: z.object({ deviceType: z.string().optional() }) },
+    responses: { 200: { description: 'ok', schema: z.object({ firmware: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const params: unknown[] = [];
   let where = '';
   if (req.query.deviceType) { params.push(req.query.deviceType); where = 'WHERE device_type = $1'; }
@@ -43,22 +73,37 @@ router.get('/firmware', ah(async (req, res) => {
     `SELECT * FROM firmware ${where} ORDER BY device_type, created_at DESC`, params,
   );
   res.json({ firmware: rows });
-}));
+}),
+);
 
 // ── Rollouts ───────────────────────────────────────────────────────────────
-router.get('/rollouts', ah(async (_req, res) => {
+router.get(
+  '/rollouts',
+  apiRoute({
+    method: 'get', path: '/api/breeder/fleet/rollouts', tags: T, secure: true,
+    summary: 'Recent firmware rollouts (live first).',
+    responses: { 200: { description: 'ok', schema: z.object({ rollouts: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (_req, res) => {
   const rows = await query(
     `SELECT r.*, f.version, f.device_type AS fw_device_type
        FROM firmware_rollouts r JOIN firmware f ON f.id = r.firmware_id
       ORDER BY (r.state <> 'done') DESC, r.updated_at DESC LIMIT 50`,
   );
   res.json({ rollouts: rows });
-}));
+}),
+);
 
 /** Start (or replace) the live rollout for a device type. Starts at canary 5%. */
-router.post('/rollouts', ah(async (req, res) => {
-  const err = need(req.body ?? {}, ['firmwareId']);
-  if (err) return bad(res, err);
+router.post(
+  '/rollouts',
+  apiRoute({
+    method: 'post', path: '/api/breeder/fleet/rollouts', tags: T, secure: true,
+    summary: 'Start (or replace) the live rollout for a device type.',
+    request: { body: z.object({ firmwareId: z.string().min(1), percent: z.coerce.number().optional() }) },
+    responses: { 201: { description: 'created' }, 404: { description: 'firmware not found' } },
+  }),
+  ah(async (req, res) => {
   const fw = await queryOne<{ id: string; device_type: string; version: string }>(
     `SELECT id, device_type, version FROM firmware WHERE id = $1`, [req.body.firmwareId],
   );
@@ -80,10 +125,25 @@ router.post('/rollouts', ah(async (req, res) => {
     detail: { version: fw.version, percent },
   });
   res.status(201).json({ rollout: row });
-}));
+}),
+);
 
 /** Advance / pause / finish. Body { state?, percent? }. Percent only grows. */
-router.patch('/rollouts/:id', ah(async (req, res) => {
+router.patch(
+  '/rollouts/:id',
+  apiRoute({
+    method: 'patch', path: '/api/breeder/fleet/rollouts/{id}', tags: T, secure: true,
+    summary: 'Advance / pause / finish a rollout (percent only grows).',
+    request: {
+      params: z.object({ id: z.string() }),
+      body: z.object({
+        state: z.enum(['rolling', 'paused', 'done']).optional(),
+        percent: z.coerce.number().optional(),
+      }),
+    },
+    responses: { 200: { description: 'ok' }, 404: { description: 'not found' } },
+  }),
+  ah(async (req, res) => {
   const cur = await queryOne<{ id: string; state: string; percent: number; device_type: string }>(
     `SELECT id, state, percent, device_type FROM firmware_rollouts WHERE id = $1`, [req.params.id],
   );
@@ -107,10 +167,18 @@ router.patch('/rollouts/:id', ah(async (req, res) => {
     subjectType: 'device_type', subjectId: cur.device_type, detail: { state, percent },
   });
   res.json({ rollout: row });
-}));
+}),
+);
 
 // ── Fleet view ─────────────────────────────────────────────────────────────
-router.get('/devices', ah(async (req, res) => {
+router.get(
+  '/devices',
+  apiRoute({
+    method: 'get', path: '/api/breeder/fleet/devices', tags: T, secure: true,
+    summary: 'Fleet view — reported vs target firmware per device.',
+    responses: { 200: { description: 'ok', schema: z.object({ devices: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const devices = await query<{
     device_id: string; device_type: string; name: string | null;
     is_online: boolean; last_seen: string | null; fw_version: string | null; fw_updated_at: string | null;
@@ -133,10 +201,22 @@ router.get('/devices', ah(async (req, res) => {
       };
     }),
   });
-}));
+}),
+);
 
 /** Push the OTA offer to one device now (canary / manual retry). */
-router.post('/devices/:deviceId/ota', ah(async (req, res) => {
+router.post(
+  '/devices/:deviceId/ota',
+  apiRoute({
+    method: 'post', path: '/api/breeder/fleet/devices/{deviceId}/ota', tags: T, secure: true,
+    summary: 'Push the OTA offer to one device now.',
+    request: {
+      params: z.object({ deviceId: z.string() }),
+      body: z.object({ firmwareId: z.string().optional() }),
+    },
+    responses: { 200: { description: 'ok' }, 404: { description: 'device not found' }, 502: { description: 'broker error' } },
+  }),
+  ah(async (req, res) => {
   const deviceId = String(req.params.deviceId);
   const dev = await queryOne<{ device_type: string }>(
     `SELECT device_type FROM devices WHERE device_id = $1 AND kennel_id = $2`, [deviceId, req.kennelId],
@@ -152,7 +232,8 @@ router.post('/devices/:deviceId/ota', ah(async (req, res) => {
   }
   await logAccess(req, 'fleet.ota.push', { subjectType: 'device', subjectId: deviceId, detail: { version: fw.version } });
   res.json({ ok: true, sent: { version: fw.version } });
-}));
+}),
+);
 
 // ── Engine sweep: nudge in-bucket online devices onto the rollout target ────
 export async function fleetSweep(): Promise<{ pushed: number }> {
@@ -181,9 +262,17 @@ export async function fleetSweep(): Promise<{ pushed: number }> {
   return { pushed };
 }
 
-router.post('/sweep', ah(async (_req, res) => {
+router.post(
+  '/sweep',
+  apiRoute({
+    method: 'post', path: '/api/breeder/fleet/sweep', tags: T, secure: true,
+    summary: 'Nudge in-bucket online devices onto the rollout target.',
+    responses: { 200: { description: 'ok', schema: z.object({ pushed: z.number() }) } },
+  }),
+  ah(async (_req, res) => {
   res.json(await fleetSweep());
-}));
+}),
+);
 
 // ── helpers ────────────────────────────────────────────────────────────────
 function clampPercent(n: unknown): number {
