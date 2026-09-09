@@ -1,0 +1,49 @@
+# Shared git hooks. Keep pre-commit under ~5s or it gets bypassed; heavy checks
+# stay in CI. Copy to a repo root (sync-dev-config.sh), then `lefthook install`.
+#
+# Every step no-ops if its tool isn't installed, so a fresh clone / a firmware
+# repo without Node still commits. Install the tools for the checks you want:
+#   JS/TS:    npm i -D lefthook prettier eslint typescript-eslint @eslint/js \
+#                       globals @commitlint/cli @commitlint/config-conventional
+#   secrets:  brew install gitleaks
+#   C/C++:    brew install clang-format
+
+pre-commit:
+  parallel: true
+  commands:
+    format:
+      glob: '*.{js,ts,mjs,cjs,jsx,tsx,json,css,md,yml,yaml}'
+      run: |
+        [ -x node_modules/.bin/prettier ] || exit 0
+        node_modules/.bin/prettier --write {staged_files} && git add {staged_files}
+    lint:
+      glob: '*.{js,ts,mjs,cjs,jsx,tsx}'
+      run: |
+        [ -x node_modules/.bin/eslint ] || exit 0
+        node_modules/.bin/eslint --fix --no-warn-ignored {staged_files} && git add {staged_files}
+    clang-format:
+      glob: '*.{c,cc,cpp,h,hpp,ino}'
+      run: |
+        command -v clang-format >/dev/null || exit 0
+        clang-format -i {staged_files} && git add {staged_files}
+    gitleaks:
+      run: |
+        command -v gitleaks >/dev/null || { echo "gitleaks not installed — skipping (brew install gitleaks)"; exit 0; }
+        gitleaks protect --staged --no-banner --redact
+    typecheck:
+      glob: '*.{ts,tsx}'
+      run: |
+        [ -f tsconfig.json ] && [ -x node_modules/.bin/tsc ] || exit 0
+        node_modules/.bin/tsc --noEmit
+
+commit-msg:
+  commands:
+    commitlint:
+      run: |
+        [ -x node_modules/.bin/commitlint ] || exit 0
+        node_modules/.bin/commitlint --edit {1}
+
+pre-push:
+  commands:
+    test:
+      run: npm test --silent --if-present
