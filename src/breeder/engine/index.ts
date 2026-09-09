@@ -19,6 +19,7 @@ import { missedDoses, type MedSchedule, type MedLog } from '../logic/medications
 import { vaccinationSweep } from '../routes/vaccinations.js';
 import { updatePackSweep } from '../routes/buyerComms.js';
 import { breedingSweep } from '../routes/breeding.js';
+import { retentionSweep } from '../routes/privacy.js';
 import { raiseException } from '../exceptions.js';
 import { emitStream } from '../stream.js';
 
@@ -138,6 +139,7 @@ export async function engineTick(): Promise<void> {
   await vaccinationSweep().catch((e) => console.warn('[engine] vaccination sweep', e.message));
   await updatePackSweep().catch((e) => console.warn('[engine] update-pack sweep', e.message));
   await breedingSweep().catch((e) => console.warn('[engine] breeding sweep', e.message));
+  await retentionSweep().catch((e) => console.warn('[engine] retention sweep', e.message));
   await detectOffline().catch((e) => console.warn('[engine] offline detect', e.message));
 }
 

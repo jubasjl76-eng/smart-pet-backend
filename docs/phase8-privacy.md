@@ -1,7 +1,7 @@
 # Privacy & data-governance (Phase 8)
 
 Slice 1: access log.
-Slice 2 (pending): retention windows + sweep, GDPR export / delete.
+Slice 2: retention windows + sweep, GDPR export / delete.
 
 ## Access log (`009_access_log.sql`)
 
@@ -44,12 +44,71 @@ Behind the breeder guard. Filters (all optional, AND-ed):
 
 Returns `{ entries: [...] }`, newest first.
 
+## Retention (`010_retention.sql`)
+
+`retention_settings (kennel_id, data_class, keep_days)`. **No row = keep
+forever** (the safe default). The engine's `retentionSweep` only touches a class
+that has a row with `keep_days >= 1`.
+
+Classes: `access_log` (deletes `access_log` rows older than the window),
+`document` (deletes `documents` rows older than `created_at + window`, and their
+stored files, 500 per tick).
+ponytail: one window for all document kinds; split into `document.contract` /
+`document.certificate` if the breeder needs different windows (a contract is
+often a 6-year legal keep).
+
+Buyer / animal / litter records are **not** on an automatic timer. Their
+removal is the explicit erasure path below.
+
+### `GET /api/breeder/privacy/retention`
+
+`{ classes: [{ dataClass, keepDays, updatedAt }] }`. `keepDays: null` = off.
+
+### `PUT /api/breeder/privacy/retention/:class`
+
+Body `{ keepDays }`. `keepDays < 1` deletes the row (turns retention off for
+that class). `:class` must be `access_log` or `document`.
+
+### `POST /api/breeder/privacy/retention/run`
+
+Runs the sweep now. Returns `{ accessLog, documents }` (counts removed). Also on
+the engine tick.
+
+## GDPR export — `GET /api/breeder/privacy/export?subjectType=&id=`
+
+`subjectType`: `buyer` | `animal` | `litter`. Owner data lives in the
+pet-owner app (not built yet) so `owner` returns 400. Returns one JSON bundle:
+
+| subject | bundle |
+|---|---|
+| `buyer` | the buyer row, `buyer_messages`, `update_pack_subscriptions`, their `puppies` (summary), `documents`, `access_log` entries touching them |
+| `animal` | the animal row, `weight_readings`, `vaccination_records`, `heat_cycles`, `litters` it parents, `documents` |
+| `litter` | the litter row, `puppies`, waitlist `buyers`, `documents` |
+
+Logged as `privacy.export`.
+
+## GDPR delete (erasure) — `POST /api/breeder/privacy/delete`
+
+Body `{ subjectType, id, confirm: true }`. Without `confirm: true` → 400.
+
+| subject | effect | refuses (409) when |
+|---|---|---|
+| `buyer` | detaches their puppies (`puppies.buyer_id = NULL`, inventory kept), deletes the buyer (messages + subscriptions cascade) and their `documents` + files | never |
+| `animal` | deletes the animal (weights, vaccination records, heat cycles cascade) and its `documents` + files | it is `dam_id` / `sire_id` on any litter |
+| `litter` | deletes the litter (puppies cascade) and its `documents` + files | any puppy is `reserved` / `sold` / `kept` |
+
+Returns `{ ok: true, deleted: { <table>: n } }`. Logged as `privacy.delete`
+with the counts in `detail`.
+
 ## Console (Cursor's Phase 8 task)
 
 A **Data & privacy** admin screen:
 
 - access-log viewer: table backed by `GET /privacy/access-log`, with the
   filters above (action dropdown, subject search, user, date range).
-- (slice 2) a per-subject panel: "export" downloads the JSON bundle, "delete"
-  runs the erasure with a typed confirmation.
-- (slice 2) retention settings form.
+- a per-subject panel: "export" downloads the JSON bundle from
+  `GET /privacy/export`; "delete" POSTs to `/privacy/delete` with
+  `confirm: true` behind a typed confirmation, and surfaces the 409 refusal
+  reason.
+- retention settings form: `GET` / `PUT /privacy/retention/:class` for
+  `access_log` and `document` (a number field, empty = off).
