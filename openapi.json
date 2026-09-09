@@ -1873,6 +1873,300 @@
           }
         }
       }
+    },
+    "/api/breeder/geo/zones": {
+      "get": {
+        "tags": [
+          "breeder: geofencing"
+        ],
+        "summary": "Safe zones for the kennel.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "zones": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "zones"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "breeder: geofencing"
+        ],
+        "summary": "Create a safe zone (boundary or exclusion circle).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "centerLat": {
+                    "type": "number"
+                  },
+                  "centerLng": {
+                    "type": "number"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "boundary",
+                      "exclusion"
+                    ]
+                  },
+                  "radiusM": {
+                    "type": "number"
+                  },
+                  "animalId": {
+                    "nullable": true,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "centerLat",
+                  "centerLng"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "created"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/geo/zones/{id}": {
+      "patch": {
+        "tags": [
+          "breeder: geofencing"
+        ],
+        "summary": "Update a safe zone (partial).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "boundary",
+                      "exclusion"
+                    ]
+                  },
+                  "radiusM": {
+                    "type": "number"
+                  },
+                  "centerLat": {
+                    "type": "number"
+                  },
+                  "centerLng": {
+                    "type": "number"
+                  },
+                  "active": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "breeder: geofencing"
+        ],
+        "summary": "Delete a safe zone.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/geo/positions": {
+      "post": {
+        "tags": [
+          "breeder: geofencing"
+        ],
+        "summary": "Ingest a GPS fix (enter/exit detection + escape alerts).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "lat": {
+                    "type": "number"
+                  },
+                  "lng": {
+                    "type": "number"
+                  },
+                  "animalId": {
+                    "type": "string"
+                  },
+                  "deviceId": {
+                    "type": "string"
+                  },
+                  "at": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "lat",
+                  "lng"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "ingested"
+          },
+          "404": {
+            "description": "no animal for this fix"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/geo/positions/latest": {
+      "get": {
+        "tags": [
+          "breeder: geofencing"
+        ],
+        "summary": "Latest fix + inside-zone list per collared animal.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "positions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "positions"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
     }
   }
 }
