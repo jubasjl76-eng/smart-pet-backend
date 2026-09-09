@@ -1,23 +1,38 @@
 {
   "name": "smart-pet-backend",
-  "version": "1.0.0",
-  "description": "Unified Backend API for Smart Pet Ecosystem",
+  "version": "3.1.0",
+  "description": "Unified Backend API for Smart Pet Ecosystem - Edge + Cloud",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "build": "tsc",
-    "test": "vitest"
+    "build": "tsc && mkdir -p dist/database/migrations && cp src/database/migrations/*.sql dist/database/migrations/",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "migrate": "tsx src/database/migrate.ts",
+    "seed": "tsx src/database/seed-cli.ts"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
     "express": "^5.2.1",
+    "express-validator": "^7.3.1",
+    "jsonwebtoken": "^9.0.3",
+    "mqtt": "^5.15.0",
+    "multer": "^2.3.0",
+    "pg": "^8.13.1",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.2.0",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.10",
     "@types/uuid": "^10.0.0",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",

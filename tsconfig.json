@@ -10,5 +10,12 @@
     "rootDir": "src",
     "resolveJsonModule": true
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/models/**",
+    "src/controllers/collarController.ts",
+    "src/routes/collar.ts",
+    "src/app.ts"
+  ]
 }

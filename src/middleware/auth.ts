@@ -1,0 +1,81 @@
+import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+import { queryOne } from '../database/index.js';
+import { canAdmin, isOwner, mapRole, type Role } from '../identity/roles.js';
+
+export interface AuthUser {
+  id: string;
+  _id: string;
+  email: string;
+  name: string | null;
+  role: Role;
+}
+
+export interface AuthRequest extends Request {
+  user?: AuthUser;
+}
+
+function requireJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET is unset — refusing to boot');
+  }
+  return secret;
+}
+
+export function getJwtSecret(): string {
+  return requireJwtSecret();
+}
+
+export const auth = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const authHeader = req.headers.authorization;
+    // `?token=` fallback for EventSource (SSE), which can't set headers.
+    const queryToken = typeof req.query?.token === 'string' ? req.query.token : null;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : queryToken;
+    if (!token) {
+      res.status(401).json({ error: 'No token provided' });
+      return;
+    }
+    const decoded = jwt.verify(token, requireJwtSecret()) as { userId: string; role?: string };
+    const user = await queryOne<any>('SELECT id, email, name, role, active FROM users WHERE id = $1', [decoded.userId]);
+    if (!user) {
+      res.status(401).json({ error: 'User not found' });
+      return;
+    }
+    if (user.active === false) {
+      res.status(403).json({ error: 'Account deactivated' });
+      return;
+    }
+    const role = mapRole(user.role);
+    req.user = { id: user.id, _id: user.id, email: user.email, name: user.name, role };
+    next();
+  } catch {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+};
+
+/** Staff-only. Owner cannot pass adminOnly. */
+export const adminOnly = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  if (!req.user || !canAdmin(req.user.role)) {
+    res.status(403).json({ error: 'Admin access required' });
+    return;
+  }
+  next();
+};
+
+/** Short-lived access token. Pair with a rotating refresh token (src/auth/tokens.ts). */
+export const ACCESS_TTL = process.env.ACCESS_TTL || '12h';
+
+export const generateToken = (userId: string, role?: string): string => {
+  return jwt.sign({ userId, role: mapRole(role) }, requireJwtSecret(), { expiresIn: ACCESS_TTL as any });
+};
+
+/** Owner household routes. Staff JWT (same issuer) does not pass. */
+export const ownerOnly = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  if (!req.user || !isOwner(req.user.role)) {
+    res.status(403).json({ error: 'Owner access required' });
+    return;
+  }
+  next();
+};
