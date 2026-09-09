@@ -11,6 +11,7 @@
  */
 import mqtt, { type MqttClient } from 'mqtt';
 import { query, execute } from '../../database/index.js';
+import { config, mqttUrl } from '../../config/index.js';
 import type { RuleEvent } from '../logic/rules.js';
 import { ingestEvent } from './rulesEngine.js';
 import { notifierTick } from './notifier.js';
@@ -146,11 +147,10 @@ export async function engineTick(): Promise<void> {
 }
 
 export function startBreederEngine(): void {
-  const url = process.env.MQTT_URL || process.env.MQTT_BROKER || 'mqtt://localhost:1883';
-  client = mqtt.connect(url, {
-    clientId: (process.env.MQTT_CLIENT_ID || 'smart-pet-backend') + '-breeder',
-    username: process.env.MQTT_USERNAME || process.env.MQTT_USER || undefined,
-    password: process.env.MQTT_PASSWORD || undefined,
+  client = mqtt.connect(mqttUrl(), {
+    clientId: config.MQTT_CLIENT_ID + '-breeder',
+    username: config.MQTT_USERNAME || config.MQTT_USER || undefined,
+    password: config.MQTT_PASSWORD || undefined,
     reconnectPeriod: 5000,
     clean: true,
   });
