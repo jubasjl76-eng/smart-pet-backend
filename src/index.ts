@@ -3,16 +3,9 @@
  * 24 Sep feeder loop: owner JWT + MQTT command/status on kennel/{kennelId}/feeder/{deviceId}/
  * mqttConsumer.ts is quarantined and is not started here.
  */
+import { config, safeConfig } from './config/index.js'; // must be first: loads + validates env, exits on a bad config
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
-
-dotenv.config();
-
-if (!process.env.JWT_SECRET) {
-  console.error('JWT_SECRET is unset — refusing to boot');
-  process.exit(1);
-}
 
 import authRoutes from './routes/auth.js';
 import deviceRoutes from './routes/devices.js';
@@ -29,10 +22,11 @@ import { mountBreeder, initBreederSchema, startBreederEngine } from './breeder/i
 
 const app: Express = express();
 const PORT = 3000;
-if (process.env.PORT && process.env.PORT !== '3000') {
-  console.warn('[boot] API is locked to port 3000; ignoring PORT=' + process.env.PORT);
+if (config.PORT !== 3000) {
+  console.warn(`[boot] API is locked to port 3000; ignoring PORT=${config.PORT}`);
 }
-const BACKEND_MODE = (process.env.BACKEND_MODE || 'cloud').toLowerCase();
+const BACKEND_MODE = config.BACKEND_MODE;
+console.log('[boot] config', safeConfig());
 
 app.set('trust proxy', false);
 app.use(cors());

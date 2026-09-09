@@ -1,6 +1,7 @@
 import mqtt, { MqttClient } from 'mqtt';
 import { EventEmitter } from 'events';
 import { query } from '../database/index.js';
+import { config, mqttUrl } from '../config/index.js';
 
 const STATUS_WILDCARD = 'kennel/+/feeder/+/status';
 const ACK_TIMEOUT_MS = 15000;
@@ -68,15 +69,14 @@ export async function applyStatus(p: StatusPayload): Promise<void> {
 }
 
 export function startFeederMqtt(): void {
-  const url = process.env.MQTT_URL || 'mqtt://localhost:1883';
   const opts: mqtt.IClientOptions = {
-    clientId: process.env.MQTT_CLIENT_ID || 'smart-pet-backend',
-    username: process.env.MQTT_USERNAME || process.env.MQTT_USER || undefined,
-    password: process.env.MQTT_PASSWORD || undefined,
+    clientId: config.MQTT_CLIENT_ID,
+    username: config.MQTT_USERNAME || config.MQTT_USER || undefined,
+    password: config.MQTT_PASSWORD || undefined,
     reconnectPeriod: 5000,
     clean: false,
   };
-  client = mqtt.connect(url, opts);
+  client = mqtt.connect(mqttUrl(), opts);
   client.on('connect', () => {
     client!.subscribe(STATUS_WILDCARD, { qos: 1 }, (err) => {
       if (err) console.error('[mqtt] status subscribe failed', err);

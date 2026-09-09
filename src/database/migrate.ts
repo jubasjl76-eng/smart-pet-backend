@@ -16,6 +16,7 @@ import { readdirSync, readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import pg from 'pg';
+import { config, pgDatabase } from '../config/index.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DIR = join(HERE, 'migrations');
@@ -81,11 +82,11 @@ async function cli(): Promise<void> {
   if (process.argv.includes('--status')) {
     const { Pool } = pg;
     const pool = new Pool({
-      host: process.env.PG_HOST || 'localhost',
-      port: parseInt(process.env.PG_PORT || '5432', 10),
-      database: process.env.PG_DATABASE || 'smartpet',
-      user: process.env.PG_USER || 'postgres',
-      password: process.env.PG_PASSWORD || 'postgres',
+      host: config.PG_HOST,
+      port: config.PG_PORT,
+      database: pgDatabase(),
+      user: config.PG_USER,
+      password: config.PG_PASSWORD,
     });
     try {
       await pool.query(`CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT NOW())`);

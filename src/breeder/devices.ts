@@ -10,6 +10,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { query, queryOne, execute } from '../database/index.js';
 import { syncAclFile } from '../mqtt/acl.js';
+import { mqttPublicUrl } from '../config/index.js';
 
 export const DEVICE_TYPES = ['feeder', 'water', 'door', 'sensor', 'gps', 'scale', 'hub'] as const;
 export type DeviceType = (typeof DEVICE_TYPES)[number];
@@ -154,7 +155,7 @@ export async function claimByPairing(input: ClaimInput): Promise<ClaimResult> {
     mqtt: {
       username: mqttUsername,
       password: secret,
-      host: process.env.MQTT_PUBLIC_URL || process.env.MQTT_URL || null,
+      host: mqttPublicUrl(),
       topics: {
         command: `kennel/${pairing.kennel_id}/${pairing.device_type}/${deviceId}/command`,
         status: `kennel/${pairing.kennel_id}/${pairing.device_type}/${deviceId}/status`,

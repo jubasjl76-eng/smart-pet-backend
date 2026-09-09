@@ -4,21 +4,18 @@
  */
 
 import pg from 'pg';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import { config, pgDatabase } from '../config/index.js';
 
 const { Pool } = pg;
 
-// Determine which database to use based on mode
-const BACKEND_MODE = (process.env.BACKEND_MODE || 'cloud').toLowerCase();
+const BACKEND_MODE = config.BACKEND_MODE;
 
 const pool = new Pool({
-  host: process.env.PG_HOST || 'localhost',
-  port: parseInt(process.env.PG_PORT || '5432'),
-  database: process.env.PG_DATABASE || (BACKEND_MODE === 'edge' ? 'smartpet_edge' : 'smartpet'),
-  user: process.env.PG_USER || 'postgres',
-  password: process.env.PG_PASSWORD || 'postgres',
+  host: config.PG_HOST,
+  port: config.PG_PORT,
+  database: pgDatabase(),
+  user: config.PG_USER,
+  password: config.PG_PASSWORD,
 });
 
 export async function initializeDatabase(): Promise<void> {
