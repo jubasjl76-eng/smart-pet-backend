@@ -21,6 +21,17 @@ bus.setMaxListeners(50);
 
 let client: MqttClient | null = null;
 
+/** True once the backend's feeder MQTT client has an open broker connection. */
+export function isFeederMqttConnected(): boolean {
+  return !!client?.connected;
+}
+
+/** Close the feeder MQTT client (graceful shutdown). */
+export function stopFeederMqtt(): void {
+  client?.end();
+  client = null;
+}
+
 export function commandTopic(kennelId: string, deviceId: string, deviceType = 'feeder'): string {
   return `kennel/${kennelId}/${deviceType}/${deviceId}/command`;
 }
