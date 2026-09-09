@@ -1,0 +1,14 @@
+node_modules
+dist
+.git
+.github
+coverage
+*.log
+.env
+.env.*
+data
+docs
+test
+src/__tests__
+vitest.config.ts
+docker-compose*.yml

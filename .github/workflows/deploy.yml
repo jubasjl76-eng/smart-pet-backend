@@ -1,0 +1,45 @@
+name: deploy
+
+# On merge to development: build the image, migrate, roll the dev ECS service.
+# Uses GitHub → AWS OIDC. Self-skips until the repo variables DEPLOY_ROLE_ARN
+# (= smart-pet-terraform module.oidc gha_deploy_role_arns["backend"]) and
+# AWS_REGION are set.
+
+on:
+  push:
+    branches: [development]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.g.outputs.run }}
+    steps:
+      - id: g
+        env:
+          ROLE: ${{ vars.DEPLOY_ROLE_ARN }}
+        run: |
+          if [ -n "$ROLE" ]; then echo "run=true" >> "$GITHUB_OUTPUT"
+          else echo "run=false" >> "$GITHUB_OUTPUT"; echo "::notice::DEPLOY_ROLE_ARN not set — skipping deploy."; fi
+
+  deploy:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    permissions:
+      id-token: write
+      contents: read
+    uses: jubasjl76-eng/smart-pet-ci/.github/workflows/deploy-ecs.yml@main
+    with:
+      service: backend
+      task-family: smart-pet-dev-backend
+      container-name: backend
+      cluster: smart-pet-dev
+      ecr-repo: smart-pet/backend
+      aws-region: ${{ vars.AWS_REGION }}
+      role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
+      run-migrations: true
+      migration-command: '["node","dist/database/migrate.js"]'
