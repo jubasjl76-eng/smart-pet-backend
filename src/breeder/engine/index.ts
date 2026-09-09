@@ -17,6 +17,7 @@ import { notifierTick } from './notifier.js';
 import { consumableStatus } from '../logic/consumables.js';
 import { missedDoses, type MedSchedule, type MedLog } from '../logic/medications.js';
 import { vaccinationSweep } from '../routes/vaccinations.js';
+import { updatePackSweep } from '../routes/buyerComms.js';
 import { raiseException } from '../exceptions.js';
 import { emitStream } from '../stream.js';
 
@@ -134,6 +135,7 @@ export async function engineTick(): Promise<void> {
   await sweepConsumables().catch((e) => console.warn('[engine] consumable sweep', e.message));
   await sweepMissedMeds().catch((e) => console.warn('[engine] med sweep', e.message));
   await vaccinationSweep().catch((e) => console.warn('[engine] vaccination sweep', e.message));
+  await updatePackSweep().catch((e) => console.warn('[engine] update-pack sweep', e.message));
   await detectOffline().catch((e) => console.warn('[engine] offline detect', e.message));
 }
 
