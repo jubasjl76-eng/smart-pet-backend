@@ -10,6 +10,8 @@ import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import '../routes/auth.js';
 import '../breeder/routes/rules.js';
+import '../breeder/routes/inbox.js';
+import '../breeder/routes/meds.js';
 // + more route files as they migrate onto the zod registry
 import { buildOpenApiDoc } from './index.js';
 
