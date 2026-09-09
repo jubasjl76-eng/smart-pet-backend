@@ -4,8 +4,10 @@
  * A "planned mating" is a `litters` row in status 'planned'.
  */
 import { Router } from 'express';
+import { z } from '@jubasjl76-eng/shared';
 import { query, queryOne, execute } from '../../database/index.js';
-import { ah, bad, need } from '../http.js';
+import { ah, bad } from '../http.js';
+import { apiRoute } from '../../openapi/index.js';
 import { raiseException } from '../exceptions.js';
 import {
   predictNextHeat,
@@ -15,9 +17,19 @@ import {
 } from '../logic/breeding.js';
 
 const router = Router();
+const T = ['breeder: breeding'];
+const idParam = z.object({ id: z.string() });
 
 // ── Heat cycles ──────────────────────────────────────────────────────────
-router.get('/heat-cycles', ah(async (req, res) => {
+router.get(
+  '/heat-cycles',
+  apiRoute({
+    method: 'get', path: '/api/breeder/breeding/heat-cycles', tags: T, secure: true,
+    summary: 'Heat cycles (filter by animalId).',
+    request: { query: z.object({ animalId: z.string().optional() }) },
+    responses: { 200: { description: 'ok', schema: z.object({ heatCycles: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const params: unknown[] = [req.kennelId];
   let where = 'kennel_id = $1';
   if (req.query.animalId) { params.push(req.query.animalId); where += ` AND animal_id = $${params.length}`; }
@@ -26,11 +38,25 @@ router.get('/heat-cycles', ah(async (req, res) => {
     params,
   );
   res.json({ heatCycles: rows });
-}));
+}),
+);
 
-router.post('/heat-cycles', ah(async (req, res) => {
-  const err = need(req.body, ['animalId', 'startedOn']);
-  if (err) return bad(res, err);
+router.post(
+  '/heat-cycles',
+  apiRoute({
+    method: 'post', path: '/api/breeder/breeding/heat-cycles', tags: T, secure: true,
+    summary: 'Record a heat cycle.',
+    request: {
+      body: z.object({
+        animalId: z.string().min(1),
+        startedOn: z.string().min(1),
+        endedOn: z.string().nullable().optional(),
+        notes: z.string().nullable().optional(),
+      }),
+    },
+    responses: { 201: { description: 'created' } },
+  }),
+  ah(async (req, res) => {
   const b = req.body;
   const row = await queryOne(
     `INSERT INTO heat_cycles (kennel_id, animal_id, started_on, ended_on, notes)
@@ -38,9 +64,18 @@ router.post('/heat-cycles', ah(async (req, res) => {
     [req.kennelId, b.animalId, b.startedOn, b.endedOn ?? null, b.notes ?? null],
   );
   res.status(201).json({ heatCycle: row });
-}));
+}),
+);
 
-router.patch('/heat-cycles/:id', ah(async (req, res) => {
+router.patch(
+  '/heat-cycles/:id',
+  apiRoute({
+    method: 'patch', path: '/api/breeder/breeding/heat-cycles/{id}', tags: T, secure: true,
+    summary: 'Update a heat cycle (partial).',
+    request: { params: idParam },
+    responses: { 200: { description: 'ok' }, 404: { description: 'not found' } },
+  }),
+  ah(async (req, res) => {
   const camel: Record<string, string> = { startedOn: 'started_on', endedOn: 'ended_on' };
   const allowed = ['started_on', 'ended_on', 'notes'];
   const sets: string[] = [];
@@ -58,17 +93,40 @@ router.patch('/heat-cycles/:id', ah(async (req, res) => {
   );
   if (!row) return bad(res, 'Heat cycle not found', 404);
   res.json({ heatCycle: row });
-}));
+}),
+);
 
-router.delete('/heat-cycles/:id', ah(async (req, res) => {
+router.delete(
+  '/heat-cycles/:id',
+  apiRoute({
+    method: 'delete', path: '/api/breeder/breeding/heat-cycles/{id}', tags: T, secure: true,
+    summary: 'Delete a heat cycle.',
+    request: { params: idParam },
+    responses: { 200: { description: 'ok' } },
+  }),
+  ah(async (req, res) => {
   await execute(`DELETE FROM heat_cycles WHERE id=$1 AND kennel_id=$2`, [req.params.id, req.kennelId]);
   res.json({ ok: true });
-}));
+}),
+);
 
 // ── Mating detail on a litter ────────────────────────────────────────────
-router.post('/litters/:id/mated', ah(async (req, res) => {
-  const err = need(req.body, ['matedOn']);
-  if (err) return bad(res, err);
+router.post(
+  '/litters/:id/mated',
+  apiRoute({
+    method: 'post', path: '/api/breeder/breeding/litters/{id}/mated', tags: T, secure: true,
+    summary: 'Record mating detail on a litter (planned → expecting).',
+    request: {
+      params: idParam,
+      body: z.object({
+        matedOn: z.string().min(1),
+        method: z.string().nullable().optional(),
+        progesterone: z.array(z.record(z.string(), z.unknown())).optional(),
+      }),
+    },
+    responses: { 200: { description: 'ok' }, 404: { description: 'litter not found' } },
+  }),
+  ah(async (req, res) => {
   const b = req.body;
   const litter = await queryOne<{ id: string; status: string }>(
     `SELECT id, status FROM litters WHERE id=$1 AND kennel_id=$2`,
@@ -90,11 +148,21 @@ router.post('/litters/:id/mated', ah(async (req, res) => {
     ],
   );
   res.json({ litter: row });
-}));
+}),
+);
 
-router.post('/litters/:id/progesterone', ah(async (req, res) => {
-  const err = need(req.body, ['on', 'ngml']);
-  if (err) return bad(res, err);
+router.post(
+  '/litters/:id/progesterone',
+  apiRoute({
+    method: 'post', path: '/api/breeder/breeding/litters/{id}/progesterone', tags: T, secure: true,
+    summary: 'Append a progesterone reading + get guidance.',
+    request: {
+      params: idParam,
+      body: z.object({ on: z.string().min(1), ngml: z.coerce.number() }),
+    },
+    responses: { 200: { description: 'ok' }, 404: { description: 'litter not found' } },
+  }),
+  ah(async (req, res) => {
   const litter = await queryOne<{ progesterone: { on: string; ngml: number }[] }>(
     `SELECT progesterone FROM litters WHERE id=$1 AND kennel_id=$2`,
     [req.params.id, req.kennelId],
@@ -107,10 +175,18 @@ router.post('/litters/:id/progesterone', ah(async (req, res) => {
     [req.params.id, req.kennelId, JSON.stringify(readings)],
   );
   res.json({ progesterone: readings, guidance: progesteroneGuidance(readings) });
-}));
+}),
+);
 
 // ── Assembled calendar feed ──────────────────────────────────────────────
-router.get('/calendar', ah(async (req, res) => {
+router.get(
+  '/calendar',
+  apiRoute({
+    method: 'get', path: '/api/breeder/breeding/calendar', tags: T, secure: true,
+    summary: 'Assembled breeding calendar — heats, litters, go-home dates.',
+    responses: { 200: { description: 'ok', schema: z.object({ heats: z.array(z.record(z.string(), z.unknown())), litters: z.array(z.record(z.string(), z.unknown())), goHome: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const kennelId = req.kennelId;
 
   const dams = await query<{ id: string; name: string }>(
@@ -161,7 +237,8 @@ router.get('/calendar', ah(async (req, res) => {
   );
 
   res.json({ heats, litters, goHome });
-}));
+}),
+);
 
 // ── Sweep: season + whelping reminders ──────────────────────────────────
 export async function breedingSweep(): Promise<{ raised: number }> {
@@ -213,8 +290,16 @@ export async function breedingSweep(): Promise<{ raised: number }> {
   return { raised };
 }
 
-router.post('/sweep', ah(async (_req, res) => {
+router.post(
+  '/sweep',
+  apiRoute({
+    method: 'post', path: '/api/breeder/breeding/sweep', tags: T, secure: true,
+    summary: 'Raise season + whelping reminders into the care inbox.',
+    responses: { 200: { description: 'ok', schema: z.object({ raised: z.number() }) } },
+  }),
+  ah(async (_req, res) => {
   res.json(await breedingSweep());
-}));
+}),
+);
 
 export default router;

@@ -4,12 +4,16 @@
  * buyer has an address, else logged). Mounted at /api/breeder/buyers.
  */
 import { Router } from 'express';
+import { z } from '@jubasjl76-eng/shared';
 import { query, queryOne, execute } from '../../database/index.js';
-import { ah, bad, need } from '../http.js';
+import { ah, bad } from '../http.js';
+import { apiRoute } from '../../openapi/index.js';
 import { dailyGainG } from '../logic/growth.js';
 import { renderUpdatePack, personalize } from '../logic/buyerComms.js';
 
 const router = Router();
+const T = ['breeder: buyer comms'];
+const msgBody = z.object({ subject: z.string().min(1), body: z.string().min(1) });
 
 type BuyerRow = { id: string; name: string | null; email: string | null };
 
@@ -29,9 +33,20 @@ async function queueForBuyer(
 }
 
 // ── Broadcast to a group of buyers ───────────────────────────────────────
-router.post('/messages/broadcast', ah(async (req, res) => {
-  const err = need(req.body, ['subject', 'body']);
-  if (err) return bad(res, err);
+router.post(
+  '/messages/broadcast',
+  apiRoute({
+    method: 'post', path: '/api/breeder/buyers/messages/broadcast', tags: T, secure: true,
+    summary: 'Broadcast a message to a group of buyers.',
+    request: {
+      body: msgBody.extend({
+        litterId: z.string().nullable().optional(),
+        status: z.string().nullable().optional(),
+      }),
+    },
+    responses: { 200: { description: 'ok', schema: z.object({ sent: z.number() }) } },
+  }),
+  ah(async (req, res) => {
   const { subject, body, litterId = null, status = null } = req.body;
 
   const buyers = await query<BuyerRow>(
@@ -53,12 +68,19 @@ router.post('/messages/broadcast', ah(async (req, res) => {
     );
   }
   res.json({ sent: buyers.length });
-}));
+}),
+);
 
 // ── Direct message to one buyer ──────────────────────────────────────────
-router.post('/messages/:buyerId', ah(async (req, res) => {
-  const err = need(req.body, ['subject', 'body']);
-  if (err) return bad(res, err);
+router.post(
+  '/messages/:buyerId',
+  apiRoute({
+    method: 'post', path: '/api/breeder/buyers/messages/{buyerId}', tags: T, secure: true,
+    summary: 'Send a direct message to one buyer.',
+    request: { params: z.object({ buyerId: z.string() }), body: msgBody },
+    responses: { 201: { description: 'created' }, 404: { description: 'buyer not found' } },
+  }),
+  ah(async (req, res) => {
   const buyer = await queryOne<BuyerRow>(
     `SELECT id, name, email FROM buyers WHERE id = $1 AND kennel_id = $2`,
     [req.params.buyerId, req.kennelId],
@@ -72,9 +94,18 @@ router.post('/messages/:buyerId', ah(async (req, res) => {
     [req.kennelId, buyer.id, req.body.subject, req.body.body, notificationId, req.user?.id ?? null],
   );
   res.status(201).json({ message: row });
-}));
+}),
+);
 
-router.get('/messages', ah(async (req, res) => {
+router.get(
+  '/messages',
+  apiRoute({
+    method: 'get', path: '/api/breeder/buyers/messages', tags: T, secure: true,
+    summary: 'Buyer message history (filter by buyerId / litterId).',
+    request: { query: z.object({ buyerId: z.string().optional(), litterId: z.string().optional() }) },
+    responses: { 200: { description: 'ok', schema: z.object({ messages: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const where: string[] = ['bm.kennel_id = $1'];
   const params: unknown[] = [req.kennelId];
   if (req.query.buyerId) { params.push(req.query.buyerId); where.push(`bm.buyer_id = $${params.length}`); }
@@ -89,10 +120,18 @@ router.get('/messages', ah(async (req, res) => {
     params,
   );
   res.json({ messages: rows });
-}));
+}),
+);
 
 // ── Weekly update-pack subscriptions ─────────────────────────────────────
-router.get('/update-pack/subscriptions', ah(async (req, res) => {
+router.get(
+  '/update-pack/subscriptions',
+  apiRoute({
+    method: 'get', path: '/api/breeder/buyers/update-pack/subscriptions', tags: T, secure: true,
+    summary: 'Weekly update-pack subscriptions.',
+    responses: { 200: { description: 'ok', schema: z.object({ subscriptions: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const rows = await query(
     `SELECT s.*, b.name AS buyer_name, pu.name AS puppy_name
        FROM update_pack_subscriptions s
@@ -102,11 +141,18 @@ router.get('/update-pack/subscriptions', ah(async (req, res) => {
     [req.kennelId],
   );
   res.json({ subscriptions: rows });
-}));
+}),
+);
 
-router.post('/update-pack/subscribe', ah(async (req, res) => {
-  const err = need(req.body, ['buyerId', 'puppyId']);
-  if (err) return bad(res, err);
+router.post(
+  '/update-pack/subscribe',
+  apiRoute({
+    method: 'post', path: '/api/breeder/buyers/update-pack/subscribe', tags: T, secure: true,
+    summary: 'Subscribe a buyer to a puppy’s weekly update pack.',
+    request: { body: z.object({ buyerId: z.string().min(1), puppyId: z.string().min(1) }) },
+    responses: { 201: { description: 'created' } },
+  }),
+  ah(async (req, res) => {
   const row = await queryOne(
     `INSERT INTO update_pack_subscriptions (kennel_id, buyer_id, puppy_id)
      VALUES ($1,$2,$3)
@@ -115,9 +161,18 @@ router.post('/update-pack/subscribe', ah(async (req, res) => {
     [req.kennelId, req.body.buyerId, req.body.puppyId],
   );
   res.status(201).json({ subscription: row });
-}));
+}),
+);
 
-router.patch('/update-pack/subscriptions/:id', ah(async (req, res) => {
+router.patch(
+  '/update-pack/subscriptions/:id',
+  apiRoute({
+    method: 'patch', path: '/api/breeder/buyers/update-pack/subscriptions/{id}', tags: T, secure: true,
+    summary: 'Activate / deactivate an update-pack subscription.',
+    request: { params: z.object({ id: z.string() }), body: z.object({ active: z.boolean() }) },
+    responses: { 200: { description: 'ok' }, 404: { description: 'not found' } },
+  }),
+  ah(async (req, res) => {
   if (typeof req.body?.active !== 'boolean') return bad(res, 'Pass { active }');
   const row = await queryOne(
     `UPDATE update_pack_subscriptions SET active = $3 WHERE id = $1 AND kennel_id = $2 RETURNING *`,
@@ -125,10 +180,19 @@ router.patch('/update-pack/subscriptions/:id', ah(async (req, res) => {
   );
   if (!row) return bad(res, 'Subscription not found', 404);
   res.json({ subscription: row });
-}));
+}),
+);
 
 // ── Go-home pack ────────────────────────────────────────────────────────
-router.get('/puppies/:pupId/go-home-pack', ah(async (req, res) => {
+router.get(
+  '/puppies/:pupId/go-home-pack',
+  apiRoute({
+    method: 'get', path: '/api/breeder/buyers/puppies/{pupId}/go-home-pack', tags: T, secure: true,
+    summary: 'Assembled go-home pack for a puppy.',
+    request: { params: z.object({ pupId: z.string() }) },
+    responses: { 200: { description: 'ok' }, 404: { description: 'puppy not found' } },
+  }),
+  ah(async (req, res) => {
   const pup = await queryOne<Record<string, unknown>>(
     `SELECT pu.id, pu.name, pu.sex, pu.color, pu.microchip, pu.birth_weight_g, pu.go_home_on, pu.photos,
             pu.buyer_id, l.name AS litter_name, l.breed AS litter_breed,
@@ -172,7 +236,8 @@ router.get('/puppies/:pupId/go-home-pack', ah(async (req, res) => {
     documents,
     generatedAt: new Date().toISOString(),
   });
-}));
+}),
+);
 
 // ── Weekly sweep (also on the engine timer) ─────────────────────────────
 export async function updatePackSweep(): Promise<{ sent: number }> {
@@ -236,8 +301,16 @@ export async function updatePackSweep(): Promise<{ sent: number }> {
   return { sent };
 }
 
-router.post('/update-pack/run', ah(async (_req, res) => {
+router.post(
+  '/update-pack/run',
+  apiRoute({
+    method: 'post', path: '/api/breeder/buyers/update-pack/run', tags: T, secure: true,
+    summary: 'Run the weekly update-pack sweep now.',
+    responses: { 200: { description: 'ok', schema: z.object({ sent: z.number() }) } },
+  }),
+  ah(async (_req, res) => {
   res.json(await updatePackSweep());
-}));
+}),
+);
 
 export default router;

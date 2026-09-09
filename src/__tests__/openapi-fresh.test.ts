@@ -9,7 +9,9 @@ import '../breeder/routes/geo.js';
 import '../breeder/routes/fleet.js';
 import '../breeder/routes/documents.js';
 import '../breeder/routes/privacy.js';
-import '../breeder/routes/vaccinations.js'; // keep in sync with src/openapi/dump.ts
+import '../breeder/routes/vaccinations.js';
+import '../breeder/routes/breeding.js';
+import '../breeder/routes/buyerComms.js'; // keep in sync with src/openapi/dump.ts
 
 describe('openapi.json', () => {
   it('is up to date — run `npm run openapi:dump` if this fails', () => {
