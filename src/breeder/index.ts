@@ -17,6 +17,7 @@ import rules from './routes/rules.js';
 import ops from './routes/ops.js';
 import devices from './routes/devices.js';
 import publicRoutes from './routes/public.js';
+import vaccinations from './routes/vaccinations.js';
 import websiteRoutes from './routes/website.js';
 import { streamHandler } from './stream.js';
 
@@ -40,6 +41,7 @@ export function mountBreeder(app: Express): void {
   app.use('/api/breeder/ops/devices', ...guard, devices);
   app.use('/api/breeder/ops', ...guard, ops);
   app.use('/api/breeder/website', ...guard, websiteRoutes);
+  app.use('/api/breeder/vaccinations', ...guard, vaccinations);
 
   app.get('/api/breeder/health', (_req, res) => {
     res.json({ ok: true, module: 'breeder', mountedAt: '/api/breeder' });
