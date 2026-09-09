@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "migrate": "tsx src/database/migrate.ts",
     "seed": "tsx src/database/seed-cli.ts",
-    "prepare": "lefthook install || true"
+    "prepare": "lefthook install || true",
+    "openapi:dump": "JWT_SECRET=dump tsx src/openapi/dump.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
