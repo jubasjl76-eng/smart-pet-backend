@@ -1,15 +1,26 @@
 import { Router } from 'express';
+import { z } from '@jubasjl76-eng/shared';
 import { query, queryOne, execute } from '../../database/index.js';
-import { ah, bad, need, type KennelRequest } from '../http.js';
+import { ah, bad, type KennelRequest } from '../http.js';
+import { apiRoute } from '../../openapi/index.js';
 import { assessPuppyWeight, expectedPuppyWeightG, adultWeightTrend, hasWeightLoss } from '../logic/growth.js';
 import { wellnessInsights } from '../logic/wellness.js';
 import { buildPedigree, type PedigreeAnimal } from '../logic/pedigree.js';
 import { raiseException } from '../exceptions.js';
 
 const router = Router();
+const T = ['breeder: animals'];
+const idParam = z.object({ id: z.string() });
 
 // ── Pens ──────────────────────────────────────────────────────────────────
-router.get('/pens', ah(async (req, res) => {
+router.get(
+  '/pens',
+  apiRoute({
+    method: 'get', path: '/api/breeder/animals/pens', tags: T, secure: true,
+    summary: 'Pens with live occupancy.',
+    responses: { 200: { description: 'ok', schema: z.object({ pens: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const rows = await query(
     `SELECT p.*, COUNT(a.id)::int AS occupancy
        FROM pens p LEFT JOIN animals a ON a.current_pen_id = p.id AND a.status='active'
@@ -17,11 +28,25 @@ router.get('/pens', ah(async (req, res) => {
     [req.kennelId]
   );
   res.json({ pens: rows });
-}));
+}),
+);
 
-router.post('/pens', ah(async (req, res) => {
-  const err = need(req.body, ['name']);
-  if (err) return bad(res, err);
+router.post(
+  '/pens',
+  apiRoute({
+    method: 'post', path: '/api/breeder/animals/pens', tags: T, secure: true,
+    summary: 'Create a pen.',
+    request: {
+      body: z.object({
+        name: z.string().min(1),
+        kind: z.string().optional(),
+        capacity: z.coerce.number().optional(),
+        doorDeviceId: z.string().nullable().optional(),
+      }),
+    },
+    responses: { 201: { description: 'created' } },
+  }),
+  ah(async (req, res) => {
   const { name, kind = 'run', capacity = 1, doorDeviceId = null } = req.body;
   const row = await queryOne(
     `INSERT INTO pens (kennel_id, name, kind, capacity, door_device_id)
@@ -29,10 +54,18 @@ router.post('/pens', ah(async (req, res) => {
     [req.kennelId, name, kind, capacity, doorDeviceId]
   );
   res.status(201).json({ pen: row });
-}));
+}),
+);
 
 // ── Animals ───────────────────────────────────────────────────────────────
-router.get('/', ah(async (req, res) => {
+router.get(
+  '/',
+  apiRoute({
+    method: 'get', path: '/api/breeder/animals', tags: T, secure: true,
+    summary: 'All animals in the kennel.',
+    responses: { 200: { description: 'ok', schema: z.object({ animals: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const rows = await query(
     `SELECT a.*, p.name AS pen_name
        FROM animals a LEFT JOIN pens p ON p.id = a.current_pen_id
@@ -40,11 +73,36 @@ router.get('/', ah(async (req, res) => {
     [req.kennelId]
   );
   res.json({ animals: rows });
-}));
+}),
+);
 
-router.post('/', ah(async (req, res) => {
-  const err = need(req.body, ['name']);
-  if (err) return bad(res, err);
+router.post(
+  '/',
+  apiRoute({
+    method: 'post', path: '/api/breeder/animals', tags: T, secure: true,
+    summary: 'Add an animal.',
+    request: {
+      body: z.object({
+        name: z.string().min(1),
+        callName: z.string().nullable().optional(),
+        breed: z.string().nullable().optional(),
+        sex: z.string().nullable().optional(),
+        dob: z.string().nullable().optional(),
+        microchip: z.string().nullable().optional(),
+        registrationNo: z.string().nullable().optional(),
+        sireId: z.string().nullable().optional(),
+        damId: z.string().nullable().optional(),
+        collarDeviceId: z.string().nullable().optional(),
+        bleTagId: z.string().nullable().optional(),
+        penId: z.string().nullable().optional(),
+        role: z.string().optional(),
+        adultWeightKg: z.coerce.number().nullable().optional(),
+        photoUrl: z.string().nullable().optional(),
+      }),
+    },
+    responses: { 201: { description: 'created' } },
+  }),
+  ah(async (req, res) => {
   const b = req.body;
   const row = await queryOne(
     `INSERT INTO animals
@@ -60,9 +118,18 @@ router.post('/', ah(async (req, res) => {
     ]
   );
   res.status(201).json({ animal: row });
-}));
+}),
+);
 
-router.get('/:id', ah(async (req, res) => {
+router.get(
+  '/:id',
+  apiRoute({
+    method: 'get', path: '/api/breeder/animals/{id}', tags: T, secure: true,
+    summary: 'One animal + its care plan.',
+    request: { params: idParam },
+    responses: { 200: { description: 'ok' }, 404: { description: 'not found' } },
+  }),
+  ah(async (req, res) => {
   const animal = await queryOne(
     `SELECT * FROM animals WHERE id = $1 AND kennel_id = $2`,
     [req.params.id, req.kennelId]
@@ -70,9 +137,18 @@ router.get('/:id', ah(async (req, res) => {
   if (!animal) return bad(res, 'Animal not found', 404);
   const carePlan = await queryOne(`SELECT * FROM care_plans WHERE animal_id = $1`, [req.params.id]);
   res.json({ animal, carePlan: carePlan ?? null });
-}));
+}),
+);
 
-router.patch('/:id', ah(async (req, res) => {
+router.patch(
+  '/:id',
+  apiRoute({
+    method: 'patch', path: '/api/breeder/animals/{id}', tags: T, secure: true,
+    summary: 'Update an animal (partial).',
+    request: { params: idParam },
+    responses: { 200: { description: 'ok' }, 404: { description: 'not found' } },
+  }),
+  ah(async (req, res) => {
   const allowed = ['name', 'call_name', 'breed', 'sex', 'dob', 'microchip', 'registration_no',
     'collar_device_id', 'ble_tag_id', 'current_pen_id', 'role', 'status', 'adult_weight_kg', 'photo_url'];
   const camel: Record<string, string> = {
@@ -92,11 +168,18 @@ router.patch('/:id', ah(async (req, res) => {
   );
   if (!row) return bad(res, 'Animal not found', 404);
   res.json({ animal: row });
-}));
+}),
+);
 
-router.post('/:id/move', ah(async (req, res) => {
-  const err = need(req.body, ['penId']);
-  if (err) return bad(res, err);
+router.post(
+  '/:id/move',
+  apiRoute({
+    method: 'post', path: '/api/breeder/animals/{id}/move', tags: T, secure: true,
+    summary: 'Move an animal to a pen.',
+    request: { params: idParam, body: z.object({ penId: z.string().min(1) }) },
+    responses: { 200: { description: 'ok' }, 404: { description: 'not found' } },
+  }),
+  ah(async (req, res) => {
   const row = await queryOne(
     `UPDATE animals SET current_pen_id = $3, updated_at = NOW()
       WHERE id = $1 AND kennel_id = $2 RETURNING *`,
@@ -104,10 +187,19 @@ router.post('/:id/move', ah(async (req, res) => {
   );
   if (!row) return bad(res, 'Animal not found', 404);
   res.json({ animal: row });
-}));
+}),
+);
 
 // ── Care plan ─────────────────────────────────────────────────────────────
-router.put('/:id/care-plan', ah(async (req, res) => {
+router.put(
+  '/:id/care-plan',
+  apiRoute({
+    method: 'put', path: '/api/breeder/animals/{id}/care-plan', tags: T, secure: true,
+    summary: 'Upsert an animal’s care plan.',
+    request: { params: idParam },
+    responses: { 200: { description: 'ok' }, 404: { description: 'animal not found' } },
+  }),
+  ah(async (req, res) => {
   const animal = await queryOne<{ id: string }>(
     `SELECT id FROM animals WHERE id = $1 AND kennel_id = $2`, [req.params.id, req.kennelId]
   );
@@ -133,12 +225,28 @@ router.put('/:id/care-plan', ah(async (req, res) => {
     ]
   );
   res.json({ carePlan: row });
-}));
+}),
+);
 
 // ── Weights + growth ──────────────────────────────────────────────────────
-router.post('/:id/weights', ah(async (req, res) => {
-  const err = need(req.body, ['grams']);
-  if (err) return bad(res, err);
+router.post(
+  '/:id/weights',
+  apiRoute({
+    method: 'post', path: '/api/breeder/animals/{id}/weights', tags: T, secure: true,
+    summary: 'Record a weight reading (+ growth assessment).',
+    request: {
+      params: idParam,
+      body: z.object({
+        grams: z.coerce.number(),
+        source: z.string().optional(),
+        deviceId: z.string().nullable().optional(),
+        note: z.string().nullable().optional(),
+        takenAt: z.string().nullable().optional(),
+      }),
+    },
+    responses: { 201: { description: 'created' } },
+  }),
+  ah(async (req, res) => {
   const { grams, source = 'manual', deviceId = null, note = null, takenAt = null } = req.body;
   const row = await queryOne(
     `INSERT INTO weight_readings (kennel_id, animal_id, grams, source, device_id, note, taken_at)
@@ -182,9 +290,18 @@ router.post('/:id/weights', ah(async (req, res) => {
     }
   }
   res.status(201).json({ reading: row, assessment });
-}));
+}),
+);
 
-router.get('/:id/growth', ah(async (req, res) => {
+router.get(
+  '/:id/growth',
+  apiRoute({
+    method: 'get', path: '/api/breeder/animals/{id}/growth', tags: T, secure: true,
+    summary: 'Weight curve vs expected + adult trend.',
+    request: { params: idParam },
+    responses: { 200: { description: 'ok' }, 404: { description: 'not found' } },
+  }),
+  ah(async (req, res) => {
   const animal = await queryOne<{ adult_weight_kg: number | null; dob: string | null }>(
     `SELECT adult_weight_kg, dob FROM animals WHERE id = $1 AND kennel_id = $2`,
     [req.params.id, req.kennelId]
@@ -209,12 +326,30 @@ router.get('/:id/growth', ah(async (req, res) => {
     curve,
     adultTrend: first && last ? adultWeightTrend(last, first) : null,
   });
-}));
+}),
+);
 
 // ── Attributed intake (multi-dog identification) ──────────────────────────
-router.post('/intake', ah(async (req, res) => {
-  const err = need(req.body, ['deviceId', 'kind']);
-  if (err) return bad(res, err);
+router.post(
+  '/intake',
+  apiRoute({
+    method: 'post', path: '/api/breeder/animals/intake', tags: T, secure: true,
+    summary: 'Record an attributed intake event (multi-dog identification).',
+    request: {
+      body: z.object({
+        deviceId: z.string().min(1),
+        kind: z.string().min(1),
+        animalId: z.string().optional(),
+        gramsDispensed: z.coerce.number().nullable().optional(),
+        gramsConsumed: z.coerce.number().nullable().optional(),
+        mlConsumed: z.coerce.number().nullable().optional(),
+        identifiedBy: z.string().optional(),
+        occurredAt: z.string().nullable().optional(),
+      }),
+    },
+    responses: { 201: { description: 'created' } },
+  }),
+  ah(async (req, res) => {
   const b = req.body;
   // Who does the pen/schedule expect at this device?
   const expected = await queryOne<{ id: string; name: string }>(
@@ -248,10 +383,19 @@ router.post('/intake', ah(async (req, res) => {
     });
   }
   res.status(201).json({ intakeId: row?.id, mismatch, expectedAnimalId: expected?.id ?? null });
-}));
+}),
+);
 
 // ── Wellness insights ─────────────────────────────────────────────────────
-router.get('/:id/wellness', ah(async (req, res) => {
+router.get(
+  '/:id/wellness',
+  apiRoute({
+    method: 'get', path: '/api/breeder/animals/{id}/wellness', tags: T, secure: true,
+    summary: '21-day food / water / activity / weight insights.',
+    request: { params: idParam },
+    responses: { 200: { description: 'ok' } },
+  }),
+  ah(async (req, res) => {
   const id = req.params.id;
   const foodRows = await query<{ day: string; grams: number }>(
     `SELECT to_char(occurred_at::date,'YYYY-MM-DD') AS day, SUM(COALESCE(grams_consumed,grams_dispensed,0)) AS grams
@@ -279,10 +423,19 @@ router.get('/:id/wellness', ah(async (req, res) => {
     weightSeriesG: weightRows.map((r) => ({ takenAt: r.taken_at, grams: Number(r.grams) })),
   });
   res.json({ insights });
-}));
+}),
+);
 
 // ── Pedigree ──────────────────────────────────────────────────────────────
-router.get('/:id/pedigree', ah(async (req, res) => {
+router.get(
+  '/:id/pedigree',
+  apiRoute({
+    method: 'get', path: '/api/breeder/animals/{id}/pedigree', tags: T, secure: true,
+    summary: 'Pedigree tree (1–5 generations).',
+    request: { params: idParam, query: z.object({ generations: z.coerce.number().int().min(1).max(5).optional() }) },
+    responses: { 200: { description: 'ok' }, 404: { description: 'not found' } },
+  }),
+  ah(async (req, res) => {
   const gens = Math.min(5, Math.max(1, Math.floor(Number(req.query.generations ?? 4)) || 4));
   const all = await query<PedigreeAnimal>(
     `SELECT id, name, sex, breed, registration_no, sire_id, dam_id FROM animals WHERE kennel_id = $1`,
@@ -292,6 +445,7 @@ router.get('/:id/pedigree', ah(async (req, res) => {
   const tree = buildPedigree(String(req.params.id), byId, gens);
   if (!tree) return bad(res, 'Animal not found', 404);
   res.json({ pedigree: tree, generations: gens });
-}));
+}),
+);
 
 export default router;

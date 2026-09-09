@@ -4378,6 +4378,622 @@
           }
         }
       }
+    },
+    "/api/breeder/animals/pens": {
+      "get": {
+        "tags": [
+          "breeder: animals"
+        ],
+        "summary": "Pens with live occupancy.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "pens": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "pens"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "breeder: animals"
+        ],
+        "summary": "Create a pen.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "capacity": {
+                    "type": "number"
+                  },
+                  "doorDeviceId": {
+                    "nullable": true,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "created"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/animals": {
+      "get": {
+        "tags": [
+          "breeder: animals"
+        ],
+        "summary": "All animals in the kennel.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "animals": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "animals"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "breeder: animals"
+        ],
+        "summary": "Add an animal.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "callName": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "breed": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "sex": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "dob": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "microchip": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "registrationNo": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "sireId": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "damId": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "collarDeviceId": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "bleTagId": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "penId": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "adultWeightKg": {
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "photoUrl": {
+                    "nullable": true,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "created"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/animals/{id}": {
+      "get": {
+        "tags": [
+          "breeder: animals"
+        ],
+        "summary": "One animal + its care plan.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "breeder: animals"
+        ],
+        "summary": "Update an animal (partial).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/animals/{id}/move": {
+      "post": {
+        "tags": [
+          "breeder: animals"
+        ],
+        "summary": "Move an animal to a pen.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "penId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "penId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/animals/{id}/care-plan": {
+      "put": {
+        "tags": [
+          "breeder: animals"
+        ],
+        "summary": "Upsert an animal’s care plan.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "404": {
+            "description": "animal not found"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/animals/{id}/weights": {
+      "post": {
+        "tags": [
+          "breeder: animals"
+        ],
+        "summary": "Record a weight reading (+ growth assessment).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "grams": {
+                    "type": "number"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "deviceId": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "note": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "takenAt": {
+                    "nullable": true,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "grams"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "created"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/animals/{id}/growth": {
+      "get": {
+        "tags": [
+          "breeder: animals"
+        ],
+        "summary": "Weight curve vs expected + adult trend.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/animals/intake": {
+      "post": {
+        "tags": [
+          "breeder: animals"
+        ],
+        "summary": "Record an attributed intake event (multi-dog identification).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "deviceId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "kind": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "animalId": {
+                    "type": "string"
+                  },
+                  "gramsDispensed": {
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "gramsConsumed": {
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "mlConsumed": {
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "identifiedBy": {
+                    "type": "string"
+                  },
+                  "occurredAt": {
+                    "nullable": true,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "deviceId",
+                  "kind"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "created"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/animals/{id}/wellness": {
+      "get": {
+        "tags": [
+          "breeder: animals"
+        ],
+        "summary": "21-day food / water / activity / weight insights.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/animals/{id}/pedigree": {
+      "get": {
+        "tags": [
+          "breeder: animals"
+        ],
+        "summary": "Pedigree tree (1–5 generations).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "generations",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
     }
   }
 }
