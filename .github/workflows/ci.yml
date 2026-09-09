@@ -1,0 +1,15 @@
+# Copy to <repo>/.github/workflows/ci.yml
+name: CI
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+jobs:
+  ci:
+    uses: jubasjl76-eng/smart-pet-ci/.github/workflows/node-ci.yml@main
+    # with:
+    #   node-version: "22"
+    #   working-directory: "."
+    #   typecheck: true
+    #   test-command: "npm test"
+    #   run-build: false
