@@ -12,6 +12,7 @@ export type StatusPayload = {
   status: string;
   foodLevel?: number;
   lastFeed?: number;
+  fwVersion?: string;
 };
 
 const bus = new EventEmitter();
@@ -19,8 +20,8 @@ bus.setMaxListeners(50);
 
 let client: MqttClient | null = null;
 
-export function commandTopic(kennelId: string, deviceId: string): string {
-  return `kennel/${kennelId}/feeder/${deviceId}/command`;
+export function commandTopic(kennelId: string, deviceId: string, deviceType = 'feeder'): string {
+  return `kennel/${kennelId}/${deviceType}/${deviceId}/command`;
 }
 
 export function statusTopic(kennelId: string, deviceId: string): string {
@@ -38,6 +39,7 @@ function parseStatus(raw: Buffer): StatusPayload | null {
       status: String(p.status || 'offline'),
       foodLevel: p.foodLevel !== undefined ? Number(p.foodLevel) : undefined,
       lastFeed: p.lastFeed !== undefined ? Number(p.lastFeed) : undefined,
+      fwVersion: p.fw ?? p.fwVersion ?? undefined,
     };
   } catch {
     return null;
@@ -56,9 +58,11 @@ export async function applyStatus(p: StatusPayload): Promise<void> {
        latest_value = COALESCE($3, latest_value),
        last_feed = COALESCE($4, last_feed),
        kennel_id = COALESCE(kennel_id, $5),
+       fw_version = COALESCE($7, fw_version),
+       fw_updated_at = CASE WHEN $7 IS NOT NULL AND $7 IS DISTINCT FROM fw_version THEN NOW() ELSE fw_updated_at END,
        updated_at = NOW()
      WHERE device_id = $6`,
-    [online, online ? 'online' : 'offline', food, p.lastFeed ?? null, p.kennelId, p.deviceId]
+    [online, online ? 'online' : 'offline', food, p.lastFeed ?? null, p.kennelId, p.deviceId, p.fwVersion ?? null]
   );
   bus.emit(`status:${p.deviceId}`, p);
 }
@@ -91,13 +95,15 @@ export function startFeederMqtt(): void {
   client.on('error', (e) => console.error('[mqtt]', e.message));
 }
 
-export function publishCommand(kennelId: string, deviceId: string, body: object): Promise<void> {
+export function publishCommand(
+  kennelId: string, deviceId: string, body: object, deviceType = 'feeder',
+): Promise<void> {
   return new Promise((resolve, reject) => {
     if (!client || !client.connected) {
       reject(new Error('MQTT broker not connected'));
       return;
     }
-    const topic = commandTopic(kennelId, deviceId);
+    const topic = commandTopic(kennelId, deviceId, deviceType);
     client.publish(topic, JSON.stringify(body), { qos: 2 }, (err) => {
       if (err) reject(err);
       else resolve();
