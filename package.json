@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "migrate": "tsx src/database/migrate.ts",
-    "seed": "tsx src/database/seed-cli.ts"
+    "seed": "tsx src/database/seed-cli.ts",
+    "prepare": "lefthook install || true"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -37,6 +38,14 @@
     "@types/uuid": "^10.0.0",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "lefthook": "^1.13.0",
+    "prettier": "^3.3.0",
+    "eslint": "^9.13.0",
+    "typescript-eslint": "^8.11.0",
+    "@eslint/js": "^9.13.0",
+    "globals": "^15.11.0",
+    "@commitlint/cli": "^19.5.0",
+    "@commitlint/config-conventional": "^19.5.0"
   }
 }
