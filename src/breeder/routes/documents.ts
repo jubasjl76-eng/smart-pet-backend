@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { query, queryOne, execute } from '../../database/index.js';
 import { ah, bad, need } from '../http.js';
 import { getStorage } from '../../services/storage.js';
+import { logAccess } from '../accessLog.js';
 import {
   DEFAULT_TEMPLATES, KNOWN_SLUGS, defaultTemplate, templateTokens, buildDoc,
 } from '../logic/docTemplates.js';
@@ -64,12 +65,21 @@ router.get('/', ah(async (req, res) => {
 
 router.get('/:id/download', ah(async (req, res) => {
   const doc = await queryOne<{
-    storage_key: string | null; filename: string | null; content_type: string | null; body: string | null;
+    storage_key: string | null; filename: string | null; content_type: string | null;
+    body: string | null; kind: string; subject_type: string | null; subject_id: string | null;
   }>(
-    `SELECT storage_key, filename, content_type, body FROM documents WHERE id=$1 AND kennel_id=$2`,
+    `SELECT storage_key, filename, content_type, body, kind, subject_type, subject_id
+       FROM documents WHERE id=$1 AND kennel_id=$2`,
     [req.params.id, req.kennelId],
   );
   if (!doc) return bad(res, 'Document not found', 404);
+
+  const docId = String(req.params.id);
+  await logAccess(req, 'document.download', {
+    subjectType: doc.subject_type ?? 'document',
+    subjectId: doc.subject_id ?? docId,
+    detail: { documentId: docId, kind: doc.kind, generated: !doc.storage_key },
+  });
 
   if (!doc.storage_key && doc.body != null) {
     res.type('text/markdown').send(doc.body);
