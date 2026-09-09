@@ -17,6 +17,8 @@ import '../breeder/routes/fleet.js';
 import '../breeder/routes/documents.js';
 import '../breeder/routes/privacy.js';
 import '../breeder/routes/vaccinations.js';
+import '../breeder/routes/breeding.js';
+import '../breeder/routes/buyerComms.js';
 // + more route files as they migrate onto the zod registry
 import { buildOpenApiDoc } from './index.js';
 
