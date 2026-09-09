@@ -3,6 +3,9 @@
  * to log in and operate: an owner account, the kennel, its automation rules and
  * a basic set of pens. Demo animals only when SEED_DEMO=true.
  *
+ * Full console kennel (pedigree, litter, buyers, inbox, papers):
+ *   npm run seed
+ *
  * Env:
  *   SEED_OWNER_EMAIL / SEED_OWNER_PASSWORD   create the owner (skipped in
  *     production if no password is given — no weak default there)
@@ -11,12 +14,14 @@
  *   SEED_PENS=false    don't create the starter pens
  *   SEED_DEMO=true     add a demo dam + sire, a published litter for the public
  *                     website, and mark setup complete
+ *   SEED_CONSOLE=true  also run the full console kennel (same as `npm run seed`)
  *   BREEDER_KENNEL_SLUG / BREEDER_KENNEL_NAME   the kennel identity
  */
 import bcrypt from 'bcryptjs';
 import { query, queryOne, execute } from './index.js';
 import { presetRules } from '../breeder/logic/rules.js';
 import { DEFAULT_PROTOCOL } from '../breeder/logic/vaccinations.js';
+import { seedConsole } from './seedConsole.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -142,10 +147,11 @@ async function seedWebsiteDemo(slug: string): Promise<void> {
   }
 }
 
-export async function runSeed(opts: { demo?: boolean } = {}): Promise<SeedResult> {
+export async function runSeed(opts: { demo?: boolean; console?: boolean } = {}): Promise<SeedResult> {
   const slug = process.env.BREEDER_KENNEL_SLUG || 'home';
   const name = process.env.BREEDER_KENNEL_NAME || 'Home Kennel';
   const demo = opts.demo ?? process.env.SEED_DEMO === 'true';
+  const full = opts.console ?? process.env.SEED_CONSOLE === 'true';
 
   // ── kennel ────────────────────────────────────────────────────────────────
   await execute(
@@ -232,6 +238,14 @@ export async function runSeed(opts: { demo?: boolean } = {}): Promise<SeedResult
       await seedWebsiteDemo(slug);
     } catch (e) {
       console.warn('[seed] website demo skipped:', (e as Error).message);
+    }
+  }
+
+  if (full) {
+    try {
+      await seedConsole(slug);
+    } catch (e) {
+      console.warn('[seed] console demo skipped:', (e as Error).message);
     }
   }
 

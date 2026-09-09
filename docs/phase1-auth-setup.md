@@ -33,6 +33,12 @@ curl -s -XPOST localhost:3000/api/auth/login -H 'content-type: application/json'
   -d '{"email":"owner@smartpet.local","password":"changeme"}' | jq
 ```
 
+To fill **every console screen** (pedigree, litter, buyers, inbox, papers, …):
+
+```bash
+npm run seed
+```
+
 Toggles: `SEED_RULES=false`, `SEED_PENS=false`, `SEED_DEMO` unset. In production,
 an owner with no `SEED_OWNER_PASSWORD` is **not** created (no weak default).
 

@@ -9,7 +9,8 @@
     "build": "tsc && mkdir -p dist/database/migrations && cp src/database/migrations/*.sql dist/database/migrations/",
     "test": "vitest run",
     "test:watch": "vitest",
-    "migrate": "tsx src/database/migrate.ts"
+    "migrate": "tsx src/database/migrate.ts",
+    "seed": "tsx src/database/seed-cli.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
