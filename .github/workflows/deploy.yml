@@ -1,45 +1,77 @@
 name: deploy
 
-# On merge to development: build the image, migrate, roll the dev ECS service.
-# Uses GitHub → AWS OIDC. Self-skips until the repo variables DEPLOY_ROLE_ARN
-# (= smart-pet-terraform module.oidc gha_deploy_role_arns["backend"]) and
-# AWS_REGION are set.
+# Four-tier deploy (hardening Phase 12, A8):
+#   merge to development  → dev
+#   tag  v*-rc.N          → staging
+#   tag  v*  (non-rc)     → prod   (GitHub Environment "prod" gates on a reviewer)
+#
+# DEPLOY_ROLE_ARN + AWS_REGION are set PER GitHub Environment (that tier's OIDC
+# deploy role from smart-pet-terraform module.oidc). The `gate` job carries the
+# `environment:` so those env-scoped vars resolve; it self-skips a tier whose
+# DEPLOY_ROLE_ARN is unset.
 
 on:
   push:
     branches: [development]
+    tags: ["v*"]
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
-  gate:
+  target:
     runs-on: ubuntu-latest
     outputs:
+      env: ${{ steps.p.outputs.env }}
+    steps:
+      - id: p
+        run: |
+          REF="${{ github.ref }}"
+          if [ "$REF" = "refs/heads/development" ]; then echo "env=dev" >> "$GITHUB_OUTPUT"
+          elif [[ "$REF" == refs/tags/v*-rc.* ]]; then echo "env=staging" >> "$GITHUB_OUTPUT"
+          elif [[ "$REF" == refs/tags/v* ]]; then echo "env=prod" >> "$GITHUB_OUTPUT"
+          else echo "env=" >> "$GITHUB_OUTPUT"; fi
+
+  gate:
+    needs: target
+    if: needs.target.outputs.env != ''
+    runs-on: ubuntu-latest
+    environment: ${{ needs.target.outputs.env }}
+    outputs:
       run: ${{ steps.g.outputs.run }}
+      role: ${{ steps.g.outputs.role }}
+      region: ${{ steps.g.outputs.region }}
     steps:
       - id: g
         env:
           ROLE: ${{ vars.DEPLOY_ROLE_ARN }}
+          REGION: ${{ vars.AWS_REGION }}
         run: |
-          if [ -n "$ROLE" ]; then echo "run=true" >> "$GITHUB_OUTPUT"
-          else echo "run=false" >> "$GITHUB_OUTPUT"; echo "::notice::DEPLOY_ROLE_ARN not set — skipping deploy."; fi
+          if [ -n "$ROLE" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "role=$ROLE" >> "$GITHUB_OUTPUT"
+            echo "region=$REGION" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${{ needs.target.outputs.env }}: DEPLOY_ROLE_ARN unset — skipping deploy."
+          fi
 
   deploy:
-    needs: gate
+    needs: [target, gate]
     if: needs.gate.outputs.run == 'true'
     permissions:
       id-token: write
       contents: read
     uses: jubasjl76-eng/smart-pet-ci/.github/workflows/deploy-ecs.yml@main
     with:
+      environment: ${{ needs.target.outputs.env }}
       service: backend
-      task-family: smart-pet-dev-backend
+      task-family: smart-pet-${{ needs.target.outputs.env }}-backend
       container-name: backend
-      cluster: smart-pet-dev
+      cluster: smart-pet-${{ needs.target.outputs.env }}
       ecr-repo: smart-pet/backend
-      aws-region: ${{ vars.AWS_REGION }}
-      role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
+      aws-region: ${{ needs.gate.outputs.region }}
+      role-to-assume: ${{ needs.gate.outputs.role }}
       run-migrations: true
       migration-command: '["node","dist/database/migrate.js"]'
