@@ -4994,6 +4994,542 @@
           }
         }
       }
+    },
+    "/api/breeder/litters": {
+      "get": {
+        "tags": [
+          "breeder: litters"
+        ],
+        "summary": "Litters with puppy counts.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "litters": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "litters"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "breeder: litters"
+        ],
+        "summary": "Create a litter (defaults to status \"planned\").",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "damId": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "sireId": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "penId": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "matedOn": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "dueOn": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "notes": {
+                    "nullable": true,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "created"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/litters/{id}/whelp": {
+      "post": {
+        "tags": [
+          "breeder: litters"
+        ],
+        "summary": "Record whelping on a litter.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "whelpedAt": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "countBorn": {
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "countAlive": {
+                    "nullable": true,
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/litters/{id}/puppies": {
+      "get": {
+        "tags": [
+          "breeder: litters"
+        ],
+        "summary": "Puppies in a litter with growth series.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "404": {
+            "description": "litter not found"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "breeder: litters"
+        ],
+        "summary": "Add a puppy to a litter.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "collarColor": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "sex": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "birthWeightG": {
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "microchip": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "bleTagId": {
+                    "nullable": true,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "created"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/litters/puppies/{pupId}/weights": {
+      "post": {
+        "tags": [
+          "breeder: litters"
+        ],
+        "summary": "Record a puppy weight reading.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "grams": {
+                    "type": "number"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "deviceId": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "note": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "takenAt": {
+                    "nullable": true,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "grams"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "created"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/litters/puppies/{pupId}": {
+      "patch": {
+        "tags": [
+          "breeder: litters"
+        ],
+        "summary": "Update a puppy (partial).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/litters/buyers/list": {
+      "get": {
+        "tags": [
+          "breeder: litters"
+        ],
+        "summary": "Buyers / waitlist for the kennel.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "buyers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "buyers"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/litters/buyers": {
+      "post": {
+        "tags": [
+          "breeder: litters"
+        ],
+        "summary": "Add a buyer to the waitlist.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "email": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "phone": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "city": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "notes": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "depositPaid": {
+                    "type": "boolean"
+                  },
+                  "wantsLitterId": {
+                    "nullable": true,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "created"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/litters/buyers/{buyerId}": {
+      "patch": {
+        "tags": [
+          "breeder: litters"
+        ],
+        "summary": "Update a buyer (partial); assigning a puppy reserves it.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "buyerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/litters/puppies/{pupId}/update-pack": {
+      "get": {
+        "tags": [
+          "breeder: litters"
+        ],
+        "summary": "Data half of the weekly buyer update pack for a puppy.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "404": {
+            "description": "puppy not found"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
     }
   }
 }

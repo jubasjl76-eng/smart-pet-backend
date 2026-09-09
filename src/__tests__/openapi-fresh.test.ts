@@ -12,7 +12,8 @@ import '../breeder/routes/privacy.js';
 import '../breeder/routes/vaccinations.js';
 import '../breeder/routes/breeding.js';
 import '../breeder/routes/buyerComms.js';
-import '../breeder/routes/animals.js'; // keep in sync with src/openapi/dump.ts
+import '../breeder/routes/animals.js';
+import '../breeder/routes/litters.js'; // keep in sync with src/openapi/dump.ts
 
 describe('openapi.json', () => {
   it('is up to date — run `npm run openapi:dump` if this fails', () => {
