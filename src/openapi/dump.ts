@@ -21,6 +21,7 @@ import '../breeder/routes/breeding.js';
 import '../breeder/routes/buyerComms.js';
 import '../breeder/routes/animals.js';
 import '../breeder/routes/litters.js';
+import '../breeder/routes/ops.js';
 // + more route files as they migrate onto the zod registry
 import { buildOpenApiDoc } from './index.js';
 
