@@ -16,6 +16,7 @@ import { ingestEvent } from './rulesEngine.js';
 import { notifierTick } from './notifier.js';
 import { consumableStatus } from '../logic/consumables.js';
 import { missedDoses, type MedSchedule, type MedLog } from '../logic/medications.js';
+import { vaccinationSweep } from '../routes/vaccinations.js';
 import { raiseException } from '../exceptions.js';
 import { emitStream } from '../stream.js';
 
@@ -132,6 +133,7 @@ export async function engineTick(): Promise<void> {
   await notifierTick().catch((e) => console.warn('[engine] notifier tick', e.message));
   await sweepConsumables().catch((e) => console.warn('[engine] consumable sweep', e.message));
   await sweepMissedMeds().catch((e) => console.warn('[engine] med sweep', e.message));
+  await vaccinationSweep().catch((e) => console.warn('[engine] vaccination sweep', e.message));
   await detectOffline().catch((e) => console.warn('[engine] offline detect', e.message));
 }
 

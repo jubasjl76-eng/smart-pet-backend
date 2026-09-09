@@ -16,6 +16,7 @@
 import bcrypt from 'bcryptjs';
 import { query, queryOne, execute } from './index.js';
 import { presetRules } from '../breeder/logic/rules.js';
+import { DEFAULT_PROTOCOL } from '../breeder/logic/vaccinations.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -179,6 +180,20 @@ export async function runSeed(opts: { demo?: boolean } = {}): Promise<SeedResult
          JSON.stringify(p.actions), p.cooldownSeconds]
       );
       rulesInstalled++;
+    }
+  }
+
+  // ── default vaccination protocol ──────────────────────────────────────────
+  if (process.env.SEED_VACC !== 'false') {
+    const have = await queryOne<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM vaccination_protocols WHERE kennel_id = $1`, [slug],
+    );
+    if ((have?.n ?? 0) === 0) {
+      await execute(
+        `INSERT INTO vaccination_protocols (kennel_id, name, doses, is_default)
+         VALUES ($1, 'Core puppy schedule', $2::jsonb, true)`,
+        [slug, JSON.stringify(DEFAULT_PROTOCOL)],
+      ).catch(() => {}); // table arrives with migration 004
     }
   }
 
