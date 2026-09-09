@@ -20,6 +20,7 @@ import { vaccinationSweep } from '../routes/vaccinations.js';
 import { updatePackSweep } from '../routes/buyerComms.js';
 import { breedingSweep } from '../routes/breeding.js';
 import { retentionSweep } from '../routes/privacy.js';
+import { fleetSweep } from '../routes/fleet.js';
 import { raiseException } from '../exceptions.js';
 import { emitStream } from '../stream.js';
 
@@ -140,6 +141,7 @@ export async function engineTick(): Promise<void> {
   await updatePackSweep().catch((e) => console.warn('[engine] update-pack sweep', e.message));
   await breedingSweep().catch((e) => console.warn('[engine] breeding sweep', e.message));
   await retentionSweep().catch((e) => console.warn('[engine] retention sweep', e.message));
+  await fleetSweep().catch((e) => console.warn('[engine] fleet sweep', e.message));
   await detectOffline().catch((e) => console.warn('[engine] offline detect', e.message));
 }
 
