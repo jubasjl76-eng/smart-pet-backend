@@ -3,6 +3,7 @@ import { query, queryOne, execute } from '../../database/index.js';
 import { ah, bad, need, type KennelRequest } from '../http.js';
 import { assessPuppyWeight, expectedPuppyWeightG, adultWeightTrend, hasWeightLoss } from '../logic/growth.js';
 import { wellnessInsights } from '../logic/wellness.js';
+import { buildPedigree, type PedigreeAnimal } from '../logic/pedigree.js';
 import { raiseException } from '../exceptions.js';
 
 const router = Router();
@@ -278,6 +279,19 @@ router.get('/:id/wellness', ah(async (req, res) => {
     weightSeriesG: weightRows.map((r) => ({ takenAt: r.taken_at, grams: Number(r.grams) })),
   });
   res.json({ insights });
+}));
+
+// ── Pedigree ──────────────────────────────────────────────────────────────
+router.get('/:id/pedigree', ah(async (req, res) => {
+  const gens = Math.min(5, Math.max(1, Math.floor(Number(req.query.generations ?? 4)) || 4));
+  const all = await query<PedigreeAnimal>(
+    `SELECT id, name, sex, breed, registration_no, sire_id, dam_id FROM animals WHERE kennel_id = $1`,
+    [req.kennelId],
+  );
+  const byId = new Map(all.map((a) => [a.id, a]));
+  const tree = buildPedigree(String(req.params.id), byId, gens);
+  if (!tree) return bad(res, 'Animal not found', 404);
+  res.json({ pedigree: tree, generations: gens });
 }));
 
 export default router;
