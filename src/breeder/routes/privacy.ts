@@ -5,15 +5,36 @@
  * Mounted at /api/breeder/privacy, behind the breeder guard.
  */
 import { Router } from 'express';
+import { z } from '@jubasjl76-eng/shared';
 import { query, queryOne, execute } from '../../database/index.js';
-import { ah, bad, need } from '../http.js';
+import { ah, bad } from '../http.js';
+import { apiRoute } from '../../openapi/index.js';
 import { getStorage } from '../../services/storage.js';
 import { logAccess } from '../accessLog.js';
 
 const router = Router();
+const T = ['breeder: privacy'];
 
 // ── Access log ─────────────────────────────────────────────────────────────
-router.get('/access-log', ah(async (req, res) => {
+router.get(
+  '/access-log',
+  apiRoute({
+    method: 'get', path: '/api/breeder/privacy/access-log', tags: T, secure: true,
+    summary: 'Read the access log (filterable).',
+    request: {
+      query: z.object({
+        action: z.string().optional(),
+        subjectType: z.string().optional(),
+        subjectId: z.string().optional(),
+        userId: z.string().optional(),
+        since: z.string().optional(),
+        until: z.string().optional(),
+        limit: z.coerce.number().int().optional(),
+      }),
+    },
+    responses: { 200: { description: 'ok', schema: z.object({ entries: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const params: unknown[] = [req.kennelId];
   const where = ['kennel_id = $1'];
   for (const [q, col] of [
@@ -33,12 +54,20 @@ router.get('/access-log', ah(async (req, res) => {
     params,
   );
   res.json({ entries });
-}));
+}),
+);
 
 // ── Retention settings ─────────────────────────────────────────────────────
 const RETENTION_CLASSES = ['access_log', 'document'] as const;
 
-router.get('/retention', ah(async (req, res) => {
+router.get(
+  '/retention',
+  apiRoute({
+    method: 'get', path: '/api/breeder/privacy/retention', tags: T, secure: true,
+    summary: 'Retention windows per data class.',
+    responses: { 200: { description: 'ok', schema: z.object({ classes: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const rows = await query<{ data_class: string; keep_days: number; updated_at: string }>(
     `SELECT data_class, keep_days, updated_at FROM retention_settings WHERE kennel_id = $1`,
     [req.kennelId],
@@ -51,9 +80,21 @@ router.get('/retention', ah(async (req, res) => {
       updatedAt: bySlug.get(c)?.updated_at ?? null,
     })),
   });
-}));
+}),
+);
 
-router.put('/retention/:class', ah(async (req, res) => {
+router.put(
+  '/retention/:class',
+  apiRoute({
+    method: 'put', path: '/api/breeder/privacy/retention/{class}', tags: T, secure: true,
+    summary: 'Set (or clear, keepDays < 1) a retention window.',
+    request: {
+      params: z.object({ class: z.string() }),
+      body: z.object({ keepDays: z.coerce.number() }),
+    },
+    responses: { 200: { description: 'ok' }, 404: { description: 'unknown data class' } },
+  }),
+  ah(async (req, res) => {
   const dataClass = String(req.params.class);
   if (!RETENTION_CLASSES.includes(dataClass as never)) return bad(res, `Unknown data class: ${dataClass}`, 404);
   const keepDays = Number(req.body?.keepDays);
@@ -74,12 +115,21 @@ router.put('/retention/:class', ah(async (req, res) => {
     [req.kennelId, dataClass, Math.floor(keepDays), req.user?.id ?? null],
   );
   res.json({ dataClass, keepDays: row?.keep_days ?? Math.floor(keepDays), updatedAt: row?.updated_at });
-}));
+}),
+);
 
 // ── GDPR export ────────────────────────────────────────────────────────────
 const EXPORT_SUBJECTS = ['buyer', 'animal', 'litter'] as const;
 
-router.get('/export', ah(async (req, res) => {
+router.get(
+  '/export',
+  apiRoute({
+    method: 'get', path: '/api/breeder/privacy/export', tags: T, secure: true,
+    summary: 'GDPR data export for a buyer / animal / litter.',
+    request: { query: z.object({ subjectType: z.enum(EXPORT_SUBJECTS), id: z.string().min(1) }) },
+    responses: { 200: { description: 'bundle' }, 404: { description: 'subject not found' } },
+  }),
+  ah(async (req, res) => {
   const subjectType = String(req.query.subjectType ?? '');
   const id = String(req.query.id ?? '');
   if (!EXPORT_SUBJECTS.includes(subjectType as never)) {
@@ -130,7 +180,8 @@ router.get('/export', ah(async (req, res) => {
 
   await logAccess(req, 'privacy.export', { subjectType, subjectId: id });
   res.json(bundle);
-}));
+}),
+);
 
 // ── GDPR delete (erasure) ──────────────────────────────────────────────────
 async function dropDocuments(kennelId: string, subjectType: string, subjectId: string): Promise<number> {
@@ -146,9 +197,21 @@ async function dropDocuments(kennelId: string, subjectType: string, subjectId: s
   return docs.length;
 }
 
-router.post('/delete', ah(async (req, res) => {
-  const err = need(req.body ?? {}, ['subjectType', 'id']);
-  if (err) return bad(res, err);
+router.post(
+  '/delete',
+  apiRoute({
+    method: 'post', path: '/api/breeder/privacy/delete', tags: T, secure: true,
+    summary: 'GDPR erasure for a buyer / animal / litter (needs { confirm: true }).',
+    request: {
+      body: z.object({
+        subjectType: z.enum(EXPORT_SUBJECTS),
+        id: z.string().min(1),
+        confirm: z.boolean().optional(),
+      }),
+    },
+    responses: { 200: { description: 'ok' }, 404: { description: 'not found' }, 409: { description: 'blocked by dependents' } },
+  }),
+  ah(async (req, res) => {
   if (req.body.confirm !== true) return bad(res, 'Pass { confirm: true } to erase this subject');
   const subjectType = String(req.body.subjectType);
   const id = String(req.body.id);
@@ -195,7 +258,8 @@ router.post('/delete', ah(async (req, res) => {
 
   await logAccess(req, 'privacy.delete', { subjectType, subjectId: id, detail: { deleted } });
   res.json({ ok: true, deleted });
-}));
+}),
+);
 
 // ── Retention sweep (also on the engine timer) ─────────────────────────────
 export async function retentionSweep(now: Date = new Date()): Promise<{ accessLog: number; documents: number }> {
@@ -231,8 +295,16 @@ export async function retentionSweep(now: Date = new Date()): Promise<{ accessLo
   return result;
 }
 
-router.post('/retention/run', ah(async (_req, res) => {
+router.post(
+  '/retention/run',
+  apiRoute({
+    method: 'post', path: '/api/breeder/privacy/retention/run', tags: T, secure: true,
+    summary: 'Run the retention sweep now.',
+    responses: { 200: { description: 'ok', schema: z.object({ accessLog: z.number(), documents: z.number() }) } },
+  }),
+  ah(async (_req, res) => {
   res.json(await retentionSweep());
-}));
+}),
+);
 
 export default router;
