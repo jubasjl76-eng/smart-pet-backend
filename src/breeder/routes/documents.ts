@@ -6,8 +6,10 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { randomUUID } from 'node:crypto';
+import { z } from '@jubasjl76-eng/shared';
 import { query, queryOne, execute } from '../../database/index.js';
-import { ah, bad, need } from '../http.js';
+import { ah, bad } from '../http.js';
+import { apiRoute } from '../../openapi/index.js';
 import { getStorage } from '../../services/storage.js';
 import { logAccess } from '../accessLog.js';
 import {
@@ -15,6 +17,7 @@ import {
 } from '../logic/docTemplates.js';
 
 const router = Router();
+const T = ['breeder: documents'];
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
 const KINDS = ['registration', 'contract', 'receipt', 'guarantee', 'certificate', 'handoff', 'photo', 'other'];
@@ -22,7 +25,15 @@ const SUBJECTS = ['animal', 'puppy', 'buyer', 'litter'];
 
 const safeName = (n: string) => (n || 'file').replace(/[^\w.\-]+/g, '_').slice(0, 120);
 
-router.post('/', upload.single('file'), ah(async (req, res) => {
+router.post(
+  '/',
+  apiRoute({
+    method: 'post', path: '/api/breeder/documents', tags: T, secure: true,
+    summary: 'Upload a document (multipart form-data, field "file").',
+    responses: { 201: { description: 'created' }, 400: { description: 'file missing' } },
+  }),
+  upload.single('file'),
+  ah(async (req, res) => {
   if (!req.file) return bad(res, 'file is required (multipart field "file")');
   const b = (req.body ?? {}) as Record<string, string>;
   const kind = KINDS.includes(b.kind) ? b.kind : 'other';
@@ -43,9 +54,24 @@ router.post('/', upload.single('file'), ah(async (req, res) => {
     ],
   );
   res.status(201).json({ document: row });
-}));
+}),
+);
 
-router.get('/', ah(async (req, res) => {
+router.get(
+  '/',
+  apiRoute({
+    method: 'get', path: '/api/breeder/documents', tags: T, secure: true,
+    summary: 'List documents (filter by subjectType / subjectId / kind).',
+    request: {
+      query: z.object({
+        subjectType: z.string().optional(),
+        subjectId: z.string().optional(),
+        kind: z.string().optional(),
+      }),
+    },
+    responses: { 200: { description: 'ok', schema: z.object({ documents: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const params: unknown[] = [req.kennelId];
   let where = 'kennel_id = $1';
   for (const [q, col] of [['subjectType', 'subject_type'], ['subjectId', 'subject_id'], ['kind', 'kind']] as const) {
@@ -61,9 +87,18 @@ router.get('/', ah(async (req, res) => {
     params,
   );
   res.json({ documents: rows });
-}));
+}),
+);
 
-router.get('/:id/download', ah(async (req, res) => {
+router.get(
+  '/:id/download',
+  apiRoute({
+    method: 'get', path: '/api/breeder/documents/{id}/download', tags: T, secure: true,
+    summary: 'Download a document (binary or generated markdown).',
+    request: { params: z.object({ id: z.string() }) },
+    responses: { 200: { description: 'file body' }, 404: { description: 'not found' }, 410: { description: 'missing from storage' } },
+  }),
+  ah(async (req, res) => {
   const doc = await queryOne<{
     storage_key: string | null; filename: string | null; content_type: string | null;
     body: string | null; kind: string; subject_type: string | null; subject_id: string | null;
@@ -93,12 +128,20 @@ router.get('/:id/download', ah(async (req, res) => {
   } catch {
     return bad(res, 'File is missing from storage', 410);
   }
-}));
+}),
+);
 
 // ── Generated paperwork (contract / receipt / guarantee / handoff) ──────
 
 /** Built-in defaults with this kennel's edits overlaid, each with its tokens. */
-router.get('/templates', ah(async (req, res) => {
+router.get(
+  '/templates',
+  apiRoute({
+    method: 'get', path: '/api/breeder/documents/templates', tags: T, secure: true,
+    summary: 'Document templates (defaults + this kennel’s overrides).',
+    responses: { 200: { description: 'ok', schema: z.object({ templates: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const overrides = await query<{ slug: string; title: string; body: string }>(
     `SELECT slug, title, body FROM document_templates WHERE kennel_id = $1`,
     [req.kennelId],
@@ -113,14 +156,24 @@ router.get('/templates', ah(async (req, res) => {
     };
   });
   res.json({ templates });
-}));
+}),
+);
 
 /** Upsert this kennel's override for one template slug. */
-router.put('/templates/:slug', ah(async (req, res) => {
+router.put(
+  '/templates/:slug',
+  apiRoute({
+    method: 'put', path: '/api/breeder/documents/templates/{slug}', tags: T, secure: true,
+    summary: 'Upsert this kennel’s override for one template slug.',
+    request: {
+      params: z.object({ slug: z.string() }),
+      body: z.object({ body: z.string().min(1), title: z.string().optional() }),
+    },
+    responses: { 200: { description: 'ok' }, 404: { description: 'unknown template' } },
+  }),
+  ah(async (req, res) => {
   const slug = String(req.params.slug);
   if (!KNOWN_SLUGS.includes(slug)) return bad(res, `Unknown template: ${slug}`, 404);
-  const err = need(req.body ?? {}, ['body']);
-  if (err) return bad(res, err);
   const title = req.body.title || defaultTemplate(slug)!.title;
   const row = await queryOne<Record<string, unknown>>(
     `INSERT INTO document_templates (kennel_id, slug, title, body, updated_by)
@@ -132,7 +185,8 @@ router.put('/templates/:slug', ah(async (req, res) => {
     [req.kennelId, slug, title, String(req.body.body), req.user?.id ?? null],
   );
   res.json({ template: { ...row, tokens: templateTokens(String(req.body.body)) } });
-}));
+}),
+);
 
 /**
  * Render a template into a stored `documents` row. Auto-fills tokens from a
@@ -140,10 +194,23 @@ router.put('/templates/:slug', ah(async (req, res) => {
  * subjects) comes from `tokens` on the request.
  * ponytail: puppy + buyer auto-fill only; other subject types pass tokens.
  */
-router.post('/generate', ah(async (req, res) => {
-  const b = (req.body ?? {}) as Record<string, unknown>;
-  const err = need(b, ['template', 'subjectType', 'subjectId']);
-  if (err) return bad(res, err);
+router.post(
+  '/generate',
+  apiRoute({
+    method: 'post', path: '/api/breeder/documents/generate', tags: T, secure: true,
+    summary: 'Render a template into a stored document row.',
+    request: {
+      body: z.object({
+        template: z.string().min(1),
+        subjectType: z.string().min(1),
+        subjectId: z.string().min(1),
+        tokens: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
+      }),
+    },
+    responses: { 201: { description: 'created' }, 404: { description: 'template or subject not found' } },
+  }),
+  ah(async (req, res) => {
+  const b = req.body as Record<string, unknown>;
   const slug = String(b.template);
   const def = defaultTemplate(slug);
   if (!def) return bad(res, `Unknown template: ${slug}`, 404);
@@ -212,9 +279,18 @@ router.post('/generate', ah(async (req, res) => {
     ],
   );
   res.status(201).json({ document: row, body: doc.body });
-}));
+}),
+);
 
-router.delete('/:id', ah(async (req, res) => {
+router.delete(
+  '/:id',
+  apiRoute({
+    method: 'delete', path: '/api/breeder/documents/{id}', tags: T, secure: true,
+    summary: 'Delete a document (and its stored file).',
+    request: { params: z.object({ id: z.string() }) },
+    responses: { 200: { description: 'ok' } },
+  }),
+  ah(async (req, res) => {
   const doc = await queryOne<{ storage_key: string | null }>(
     `SELECT storage_key FROM documents WHERE id=$1 AND kennel_id=$2`,
     [req.params.id, req.kennelId],
@@ -222,6 +298,7 @@ router.delete('/:id', ah(async (req, res) => {
   if (doc?.storage_key) await getStorage().remove(doc.storage_key).catch(() => undefined);
   await execute(`DELETE FROM documents WHERE id=$1 AND kennel_id=$2`, [req.params.id, req.kennelId]);
   res.json({ ok: true });
-}));
+}),
+);
 
 export default router;

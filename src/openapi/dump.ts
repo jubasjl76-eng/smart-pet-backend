@@ -13,6 +13,8 @@ import '../breeder/routes/rules.js';
 import '../breeder/routes/inbox.js';
 import '../breeder/routes/meds.js';
 import '../breeder/routes/geo.js';
+import '../breeder/routes/fleet.js';
+import '../breeder/routes/documents.js';
 // + more route files as they migrate onto the zod registry
 import { buildOpenApiDoc } from './index.js';
 
