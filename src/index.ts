@@ -3,8 +3,10 @@
  * 24 Sep feeder loop: owner JWT + MQTT command/status on kennel/{kennelId}/feeder/{deviceId}/
  * mqttConsumer.ts is quarantined and is not started here.
  */
-import { config, safeConfig } from './config/index.js'; // must be first: loads + validates env, exits on a bad config
+import './instrument.js'; // Sentry — must be the very first import (patches http/express/pg)
+import { config, safeConfig } from './config/index.js'; // loads + validates env, exits on a bad config
 import express, { Express, Request, Response, NextFunction } from 'express';
+import * as Sentry from '@sentry/node';
 import cors from 'cors';
 
 import authRoutes from './routes/auth.js';
@@ -26,6 +28,7 @@ import {
 } from './breeder/index.js';
 import { getFlags } from './services/flags.js';
 import { buildOpenApiDoc, docsHtml } from './openapi/index.js';
+import { VERSION } from './version.js';
 
 const app: Express = express();
 const PORT = 3000;
@@ -71,7 +74,6 @@ initializeDatabase()
     console.error('[boot] database/mqtt failed', e);
   });
 
-const VERSION = '3.1.0-feeder-command';
 let shuttingDown = false;
 
 // Liveness — the process is up. Always 200.
@@ -207,6 +209,9 @@ mountBreeder(app);
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: 'Not found' });
 });
+
+// Sentry error handler — after all routes, before our own. No-op without a DSN.
+Sentry.setupExpressErrorHandler(app);
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err.stack);
