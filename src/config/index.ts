@@ -53,6 +53,14 @@ const schema = z.object({
   STORAGE_DIR: z.string().default('./data/uploads'),
 
   WEBSITE_REVALIDATE_URL: z.string().optional(),
+
+  // ── error tracking (Phase 15) — read raw in src/instrument.ts; in the schema
+  //    so boot still validates them. A DSN is not a secret.
+  SENTRY_DSN: z.string().optional(),
+  SENTRY_ENVIRONMENT: z.string().optional(),
+  SENTRY_RELEASE: z.string().optional(),
+  SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).optional(),
+
   NOTIFY_EMAIL_FROM: z.string().optional(),
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_FROM: z.string().optional(),
