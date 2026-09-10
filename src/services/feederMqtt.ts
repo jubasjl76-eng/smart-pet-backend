@@ -3,6 +3,9 @@ import { EventEmitter } from 'events';
 import { query } from '../database/index.js';
 import { config, mqttUrl } from '../config/index.js';
 import { injectTrace } from '../mqtt/trace.js';
+import { log } from '../log.js';
+
+const mlog = log.child({ mod: 'feeder-mqtt' });
 
 const STATUS_WILDCARD = 'kennel/+/feeder/+/status';
 const ACK_TIMEOUT_MS = 15000;
@@ -91,7 +94,7 @@ export function startFeederMqtt(): void {
   client = mqtt.connect(mqttUrl(), opts);
   client.on('connect', () => {
     client!.subscribe(STATUS_WILDCARD, { qos: 1 }, (err) => {
-      if (err) console.error('[mqtt] status subscribe failed', err);
+      if (err) mlog.error({ err }, 'status subscribe failed');
     });
   });
   client.on('message', async (topic, payload) => {
@@ -101,10 +104,10 @@ export function startFeederMqtt(): void {
     try {
       await applyStatus(p);
     } catch (e) {
-      console.error('[mqtt] status ingest failed', e);
+      mlog.error({ err: e }, 'status ingest failed');
     }
   });
-  client.on('error', (e) => console.error('[mqtt]', e.message));
+  client.on('error', (e) => mlog.error({ err: e }, 'mqtt error'));
 }
 
 export function publishCommand(

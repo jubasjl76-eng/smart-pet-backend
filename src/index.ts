@@ -30,14 +30,15 @@ import { getFlags } from './services/flags.js';
 import { buildOpenApiDoc, docsHtml } from './openapi/index.js';
 import { VERSION } from './version.js';
 import { httpMetricsMiddleware, metricsHandler } from './metrics.js';
+import { log } from './log.js';
 
 const app: Express = express();
 const PORT = 3000;
 if (config.PORT !== 3000) {
-  console.warn(`[boot] API is locked to port 3000; ignoring PORT=${config.PORT}`);
+  log.warn({ port: config.PORT }, 'API is locked to port 3000; ignoring PORT');
 }
 const BACKEND_MODE = config.BACKEND_MODE;
-console.log('[boot] config', safeConfig());
+log.info({ config: safeConfig() }, 'boot');
 
 app.set('trust proxy', false);
 app.use(cors());
@@ -65,15 +66,15 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 initializeDatabase()
   .then(() => initBreederSchema())
-  .then(() => runMigrations(pool, (m) => console.log(m)))
+  .then(() => runMigrations(pool, (m) => log.debug(m)))
   .then((applied) => {
-    if (applied.length) console.log(`[boot] ${applied.length} migration(s) applied`);
+    if (applied.length) log.info({ count: applied.length }, 'migrations applied');
   })
   .then(() => runSeed())
   .then(() => startFeederMqtt())
   .then(() => startBreederEngine())
   .catch((e) => {
-    console.error('[boot] database/mqtt failed', e);
+    log.error({ err: e }, 'database/mqtt boot failed');
   });
 
 let shuttingDown = false;
@@ -219,25 +220,21 @@ app.use((_req: Request, res: Response) => {
 Sentry.setupExpressErrorHandler(app);
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error(err.stack);
+  log.error({ err }, 'unhandled request error');
   res.status(500).json({ error: 'Internal server error' });
 });
 
 const server = app.listen(PORT, () => {
-  console.log(`Smart Pet API on http://localhost:${PORT} mode=${BACKEND_MODE}`);
-  console.log('MQTT command: kennel/{kennelId}/feeder/{deviceId}/command QoS 2');
-  console.log('MQTT status:  kennel/{kennelId}/feeder/{deviceId}/status retained QoS 1');
-  console.log('POST /api/devices/claim issues device:<deviceId> MQTT creds once');
-  console.log('POST /api/devices/:id/feed waits for device ack+status');
+  log.info({ port: PORT, mode: BACKEND_MODE, version: VERSION }, 'Smart Pet API listening');
 });
 
 async function shutdown(signal?: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true; // /ready → 503
-  console.log(`\n[shutdown] ${signal ?? 'signal'} — draining...`);
+  log.info({ signal: signal ?? 'signal' }, 'shutdown — draining');
 
   const guard = setTimeout(() => {
-    console.error('[shutdown] drain timed out, forcing exit');
+    log.error('shutdown drain timed out, forcing exit');
     process.exit(1);
   }, 10_000);
   guard.unref();
@@ -247,7 +244,7 @@ async function shutdown(signal?: string): Promise<void> {
     stopFeederMqtt();
     await pool.end().catch(() => {});
     clearTimeout(guard);
-    console.log('[shutdown] stopped');
+    log.info('shutdown complete');
     process.exit(0);
   });
 }
