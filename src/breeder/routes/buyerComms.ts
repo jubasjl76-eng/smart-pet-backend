@@ -110,6 +110,7 @@ router.get(
   const params: unknown[] = [req.kennelId];
   if (req.query.buyerId) { params.push(req.query.buyerId); where.push(`bm.buyer_id = $${params.length}`); }
   if (req.query.litterId) { params.push(req.query.litterId); where.push(`bm.litter_id = $${params.length}`); }
+  // nosemgrep: breeder-query-must-be-kennel-scoped — `where` is seeded with 'bm.kennel_id = $1' above
   const rows = await query(
     `SELECT bm.*, b.name AS buyer_name, n.status AS delivery_status
        FROM buyer_messages bm

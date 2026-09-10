@@ -33,6 +33,7 @@ router.get(
   const params: unknown[] = [req.kennelId];
   let where = 'kennel_id = $1';
   if (req.query.animalId) { params.push(req.query.animalId); where += ` AND animal_id = $${params.length}`; }
+  // nosemgrep: breeder-query-must-be-kennel-scoped — `where` is built from 'kennel_id = $1' above
   const rows = await query(
     `SELECT * FROM heat_cycles WHERE ${where} ORDER BY started_on DESC`,
     params,

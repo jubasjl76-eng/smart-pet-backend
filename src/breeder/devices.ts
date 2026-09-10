@@ -142,6 +142,7 @@ export async function claimByPairing(input: ClaimInput): Promise<ClaimResult> {
     `UPDATE devices SET mqtt_username = $2, mqtt_password_hash = $3, claim_code = $4, updated_at = NOW() WHERE id = $1`,
     [id, mqttUsername, await bcrypt.hash(secret, 10), code]
   );
+  // nosemgrep: breeder-query-must-be-kennel-scoped — device-side claim; the pairing `code` is a kennel-scoped one-time secret, no req context here
   await execute(
     `UPDATE device_pairings SET claimed_at = NOW(), claimed_device_id = $2 WHERE code = $1`,
     [code, deviceId]
