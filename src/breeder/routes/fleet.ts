@@ -32,6 +32,8 @@ router.post(
         sha256: z.string().min(1),
         channel: z.string().optional(),
         signature: z.string().nullable().optional(),
+        signingKeyId: z.string().max(128).nullable().optional(),
+        provenance: z.record(z.string(), z.unknown()).nullable().optional(),
         sizeBytes: z.coerce.number().nullable().optional(),
         minVersion: z.string().nullable().optional(),
         notes: z.string().nullable().optional(),
@@ -42,13 +44,14 @@ router.post(
   ah(async (req, res) => {
   const b = req.body;
   const row = await queryOne(
-    `INSERT INTO firmware (device_type, version, channel, url, sha256, signature, size_bytes, min_version, notes, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    `INSERT INTO firmware (device_type, version, channel, url, sha256, signature, signing_key_id, provenance, size_bytes, min_version, notes, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12)
      ON CONFLICT (device_type, version) DO NOTHING
      RETURNING *`,
     [
       b.deviceType, b.version, b.channel || 'stable', b.url, b.sha256,
-      b.signature ?? null, b.sizeBytes ?? null, b.minVersion ?? null, b.notes ?? null,
+      b.signature ?? null, b.signingKeyId ?? null, b.provenance ? JSON.stringify(b.provenance) : null,
+      b.sizeBytes ?? null, b.minVersion ?? null, b.notes ?? null,
       req.user?.id ?? null,
     ],
   );
@@ -362,11 +365,11 @@ function clampPercent(n: unknown): number {
   return Math.min(100, Math.max(1, v));
 }
 
-interface FwRow { id: string; device_type: string; version: string; url: string; sha256: string; signature: string | null }
+interface FwRow { id: string; device_type: string; version: string; url: string; sha256: string; signature: string | null; signing_key_id: string | null }
 
 async function pickFirmware(firmwareId: string | undefined, deviceType: string): Promise<FwRow | null> {
   if (firmwareId) {
-    return queryOne<FwRow>(`SELECT id, device_type, version, url, sha256, signature FROM firmware WHERE id = $1`, [firmwareId]);
+    return queryOne<FwRow>(`SELECT id, device_type, version, url, sha256, signature, signing_key_id FROM firmware WHERE id = $1`, [firmwareId]);
   }
   const live = await liveRolloutsByType();
   return live.get(deviceType)?.fw ?? null;
@@ -377,7 +380,10 @@ async function sendOta(kennelId: string, deviceId: string, deviceType: string, f
     kennelId, deviceId,
     {
       command: 'ota', deviceId, kennelId, timestamp: Date.now(),
-      params: { url: fw.url, version: fw.version, sha256: fw.sha256, signature: fw.signature },
+      params: {
+        url: fw.url, version: fw.version, sha256: fw.sha256,
+        signature: fw.signature, signingKeyId: fw.signing_key_id,
+      },
     },
     deviceType,
   );
@@ -386,10 +392,11 @@ async function sendOta(kennelId: string, deviceId: string, deviceType: string, f
 async function liveRolloutsByType(): Promise<Map<string, { rollout: Rollout; version: string; fw: FwRow }>> {
   const rows = await query<{
     state: 'rolling' | 'paused' | 'done'; percent: number;
-    id: string; device_type: string; version: string; url: string; sha256: string; signature: string | null;
+    id: string; device_type: string; version: string; url: string; sha256: string;
+    signature: string | null; signing_key_id: string | null;
   }>(
     `SELECT r.state, r.percent,
-            f.id, f.device_type, f.version, f.url, f.sha256, f.signature
+            f.id, f.device_type, f.version, f.url, f.sha256, f.signature, f.signing_key_id
        FROM firmware_rollouts r JOIN firmware f ON f.id = r.firmware_id
       WHERE r.state <> 'done'`,
   );
@@ -398,7 +405,10 @@ async function liveRolloutsByType(): Promise<Map<string, { rollout: Rollout; ver
     m.set(r.device_type, {
       rollout: { state: r.state, percent: r.percent },
       version: r.version,
-      fw: { id: r.id, device_type: r.device_type, version: r.version, url: r.url, sha256: r.sha256, signature: r.signature },
+      fw: {
+        id: r.id, device_type: r.device_type, version: r.version, url: r.url,
+        sha256: r.sha256, signature: r.signature, signing_key_id: r.signing_key_id,
+      },
     });
   }
   return m;

@@ -2209,6 +2209,16 @@
                     "nullable": true,
                     "type": "string"
                   },
+                  "signingKeyId": {
+                    "nullable": true,
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "provenance": {
+                    "nullable": true,
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
                   "sizeBytes": {
                     "nullable": true,
                     "type": "number"

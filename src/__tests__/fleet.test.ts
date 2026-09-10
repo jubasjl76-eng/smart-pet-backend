@@ -60,6 +60,7 @@ beforeAll(async () => {
       at TIMESTAMPTZ NOT NULL DEFAULT NOW());
   `);
   await db.exec(readFileSync(join(M, '011_fleet_firmware.sql'), 'utf8'));
+  await db.exec(readFileSync(join(M, '014_ota_provenance.sql'), 'utf8'));
 
   const app = express();
   app.use(express.json());
@@ -83,9 +84,15 @@ describe('firmware + rollout routes', () => {
   let rolloutId = '';
 
   it('publishes a build and rejects a duplicate version', async () => {
-    const r = await post('/firmware', { deviceType: 'feeder', version: '1.4.0', url: 'https://x/f-1.4.0.bin', sha256: 'a'.repeat(64) });
+    const r = await post('/firmware', {
+      deviceType: 'feeder', version: '1.4.0', url: 'https://x/f-1.4.0.bin', sha256: 'a'.repeat(64),
+      signingKeyId: 'fw-key-2026', provenance: { builder: 'gha', slsa: 3 },
+    });
     expect(r.status).toBe(201);
-    fwId = (await r.json()).firmware.id;
+    const created = (await r.json()).firmware;
+    fwId = created.id;
+    expect(created.signing_key_id).toBe('fw-key-2026');
+    expect(created.provenance).toMatchObject({ builder: 'gha', slsa: 3 });
     expect((await post('/firmware', { deviceType: 'feeder', version: '1.4.0', url: 'https://x/again.bin', sha256: 'b'.repeat(64) })).status).toBe(409);
   });
 
@@ -117,8 +124,8 @@ describe('fleetSweep + GET /devices', () => {
     publishCommand.mockClear();
     // fresh rollout at 100% so every device is in-bucket
     await db.query(`UPDATE firmware_rollouts SET state = 'done'`);
-    const fw = (await db.query<{ id: string }>(`INSERT INTO firmware (device_type, version, url, sha256)
-      VALUES ('feeder','2.0.0','https://x/2.bin',$1) RETURNING id`, ['d'.repeat(64)])).rows[0];
+    const fw = (await db.query<{ id: string }>(`INSERT INTO firmware (device_type, version, url, sha256, signing_key_id)
+      VALUES ('feeder','2.0.0','https://x/2.bin',$1,'fw-key-2026') RETURNING id`, ['d'.repeat(64)])).rows[0];
     await db.query(`INSERT INTO firmware_rollouts (firmware_id, device_type, state, percent)
       VALUES ($1,'feeder','rolling',100)`, [fw.id]);
     for (let i = 0; i < 15; i++) {
@@ -130,6 +137,9 @@ describe('fleetSweep + GET /devices', () => {
     expect(r.pushed).toBe(10);              // OTA_PER_TICK cap
     expect(publishCommand).toHaveBeenCalledTimes(10);
     expect(publishCommand.mock.calls[0][3]).toBe('feeder'); // deviceType routed on the topic
+    const otaBody = publishCommand.mock.calls[0][2] as { command: string; params: Record<string, unknown> };
+    expect(otaBody.command).toBe('ota');
+    expect(otaBody.params).toMatchObject({ sha256: 'd'.repeat(64), signingKeyId: 'fw-key-2026' });
 
     const devs = await (await fetch(`${base}/devices`)).json();
     const one = devs.devices.find((d: { deviceId: string }) => d.deviceId === 'f-0');
