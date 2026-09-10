@@ -63,6 +63,7 @@ const schema = z.object({
 
   // observability (Phase 16) — /metrics is open unless this bearer token is set.
   METRICS_TOKEN: z.string().optional(),
+  LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']).optional(),
 
   NOTIFY_EMAIL_FROM: z.string().optional(),
   TWILIO_ACCOUNT_SID: z.string().optional(),

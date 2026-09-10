@@ -5,6 +5,9 @@
 
 import pg from 'pg';
 import { config, pgDatabase } from '../config/index.js';
+import { log } from '../log.js';
+
+const dlog = log.child({ mod: 'db' });
 
 const { Pool } = pg;
 
@@ -19,7 +22,7 @@ const pool = new Pool({
 });
 
 export async function initializeDatabase(): Promise<void> {
-  console.log(`[Database] Initializing PostgreSQL (${BACKEND_MODE} mode)...`);
+  dlog.info({ mode: BACKEND_MODE }, 'initializing PostgreSQL');
   
   try {
     // Create tables
@@ -167,9 +170,9 @@ export async function initializeDatabase(): Promise<void> {
     // Users, the kennel, rules and pens are seeded by src/database/seed.ts,
     // which runs on boot after the migrations.
 
-    console.log('[Database] Tables created successfully');
+    dlog.debug('base tables ready');
   } catch (error) {
-    console.error('[Database] Error creating tables:', error);
+    dlog.error({ err: error }, 'error creating base tables');
   }
   // Migrations run in src/index.ts *after* initBreederSchema(), since some
   // migration files ALTER tables the breeder schema owns.

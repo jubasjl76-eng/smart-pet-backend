@@ -26,6 +26,9 @@ import { raiseException } from '../exceptions.js';
 import { emitStream } from '../stream.js';
 import { handleCrashEvent } from './crashReport.js';
 import { withExtractedTrace } from '../../mqtt/trace.js';
+import { log } from '../../log.js';
+
+const elog = log.child({ mod: 'engine' });
 
 let client: MqttClient | null = null;
 let tickTimer: NodeJS.Timeout | null = null;
@@ -84,13 +87,13 @@ async function onMessage(topic: string, payload: Buffer): Promise<void> {
         emitStream(event.kennelId, { type: 'device', deviceId: event.deviceId, status: event.status ?? 'unknown' });
       }
       if (event.type === 'device_crash') {
-        await handleCrashEvent(event).catch((e) => console.error('[engine] crash report failed', (e as Error).message));
+        await handleCrashEvent(event).catch((e) => elog.error({ err: e }, 'crash report failed'));
         continue;
       }
       try {
         await ingestEvent(event);
       } catch (e) {
-        console.error('[engine] ingest failed', (e as Error).message);
+        elog.error({ err: e }, 'ingest failed');
       }
     }
   });
@@ -160,15 +163,17 @@ async function detectOffline(): Promise<void> {
 }
 
 export async function engineTick(): Promise<void> {
-  await notifierTick().catch((e) => console.warn('[engine] notifier tick', e.message));
-  await sweepConsumables().catch((e) => console.warn('[engine] consumable sweep', e.message));
-  await sweepMissedMeds().catch((e) => console.warn('[engine] med sweep', e.message));
-  await vaccinationSweep().catch((e) => console.warn('[engine] vaccination sweep', e.message));
-  await updatePackSweep().catch((e) => console.warn('[engine] update-pack sweep', e.message));
-  await breedingSweep().catch((e) => console.warn('[engine] breeding sweep', e.message));
-  await retentionSweep().catch((e) => console.warn('[engine] retention sweep', e.message));
-  await fleetSweep().catch((e) => console.warn('[engine] fleet sweep', e.message));
-  await detectOffline().catch((e) => console.warn('[engine] offline detect', e.message));
+  const step = (name: string, p: Promise<unknown>) =>
+    p.catch((e) => elog.warn({ step: name, err: e }, 'tick step failed'));
+  await step('notifier', notifierTick());
+  await step('consumables', sweepConsumables());
+  await step('meds', sweepMissedMeds());
+  await step('vaccinations', vaccinationSweep());
+  await step('update-pack', updatePackSweep());
+  await step('breeding', breedingSweep());
+  await step('retention', retentionSweep());
+  await step('fleet', fleetSweep());
+  await step('offline-detect', detectOffline());
 }
 
 export function startBreederEngine(): void {
@@ -181,17 +186,17 @@ export function startBreederEngine(): void {
   });
   client.on('connect', () => {
     client!.subscribe('kennel/+/+/+/+', { qos: 1 }, (err) => {
-      if (err) console.error('[engine] subscribe failed', err.message);
-      else console.log('[engine] subscribed kennel/+/+/+/+');
+      if (err) elog.error({ err }, 'subscribe failed');
+      else elog.info('subscribed kennel/+/+/+/+');
     });
   });
   client.on('message', (t, p) => { void onMessage(t, p); });
-  client.on('error', (e) => console.error('[engine] mqtt', e.message));
+  client.on('error', (e) => elog.error({ err: e }, 'mqtt error'));
 
   const intervalMs = Number(process.env.BREEDER_TICK_MS || 60_000);
   tickTimer = setInterval(() => { void engineTick(); }, intervalMs);
   if (tickTimer.unref) tickTimer.unref();
-  console.log(`[engine] breeder engine started (tick ${intervalMs}ms)`);
+  elog.info({ tickMs: intervalMs }, 'breeder engine started');
 }
 
 export function stopBreederEngine(): void {
