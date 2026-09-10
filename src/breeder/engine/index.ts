@@ -24,6 +24,7 @@ import { retentionSweep } from '../routes/privacy.js';
 import { fleetSweep } from '../routes/fleet.js';
 import { raiseException } from '../exceptions.js';
 import { emitStream } from '../stream.js';
+import { handleCrashEvent } from './crashReport.js';
 
 let client: MqttClient | null = null;
 let tickTimer: NodeJS.Timeout | null = null;
@@ -50,6 +51,15 @@ export function normaliseMessage(topic: string, payloadRaw: Buffer | string): Ru
     if (kind === 'dispense' || kind === 'dispense_acked') events.push({ ...base, type: 'dispense_acked', value: Number(p.seconds ?? p.durationSec ?? 0) });
     if (kind === 'door_open' || kind === 'door_opened') events.push({ ...base, type: 'door_opened' });
     if (kind === 'jam') events.push({ ...base, type: 'jam' });
+    if (kind === 'crash') events.push({
+      ...base,
+      type: 'device_crash',
+      meta: {
+        ...base.meta,
+        reason: p.reason, rawReason: p.rawReason, fw: p.fw,
+        heapFree: p.heapFree, minHeapFree: p.minHeapFree,
+      },
+    });
   } else if (leaf === 'location') {
     if (typeof p.battery === 'number') events.push({ ...base, type: 'low_battery', value: p.battery, metric: 'battery' });
   } else if (['temperature', 'humidity', 'airquality'].includes(leaf)) {
@@ -62,6 +72,10 @@ async function onMessage(topic: string, payload: Buffer): Promise<void> {
   for (const event of normaliseMessage(topic, payload)) {
     if (event.type === 'device_status' && event.deviceId) {
       emitStream(event.kennelId, { type: 'device', deviceId: event.deviceId, status: event.status ?? 'unknown' });
+    }
+    if (event.type === 'device_crash') {
+      await handleCrashEvent(event).catch((e) => console.error('[engine] crash report failed', (e as Error).message));
+      continue;
     }
     try {
       await ingestEvent(event);
