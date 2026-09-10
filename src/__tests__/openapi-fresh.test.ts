@@ -14,7 +14,10 @@ import '../breeder/routes/breeding.js';
 import '../breeder/routes/buyerComms.js';
 import '../breeder/routes/animals.js';
 import '../breeder/routes/litters.js';
-import '../breeder/routes/ops.js'; // keep in sync with src/openapi/dump.ts
+import '../breeder/routes/ops.js';
+import '../breeder/routes/devices.js';
+import '../breeder/routes/website.js';
+import '../breeder/routes/public.js'; // keep in sync with src/openapi/dump.ts
 
 describe('openapi.json', () => {
   it('is up to date — run `npm run openapi:dump` if this fails', () => {
