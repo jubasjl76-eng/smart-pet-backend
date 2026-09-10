@@ -25,6 +25,7 @@ import { fleetSweep } from '../routes/fleet.js';
 import { raiseException } from '../exceptions.js';
 import { emitStream } from '../stream.js';
 import { handleCrashEvent } from './crashReport.js';
+import { withExtractedTrace } from '../../mqtt/trace.js';
 
 let client: MqttClient | null = null;
 let tickTimer: NodeJS.Timeout | null = null;
@@ -73,20 +74,26 @@ export function normaliseMessage(topic: string, payloadRaw: Buffer | string): Ru
 }
 
 async function onMessage(topic: string, payload: Buffer): Promise<void> {
-  for (const event of normaliseMessage(topic, payload)) {
-    if (event.type === 'device_status' && event.deviceId) {
-      emitStream(event.kennelId, { type: 'device', deviceId: event.deviceId, status: event.status ?? 'unknown' });
+  // Continue the device's trace if the payload carries a traceparent (Phase 16).
+  let carrier: Record<string, unknown> = {};
+  try { carrier = JSON.parse(payload.toString()); } catch { /* non-JSON */ }
+
+  await withExtractedTrace(carrier, async () => {
+    for (const event of normaliseMessage(topic, payload)) {
+      if (event.type === 'device_status' && event.deviceId) {
+        emitStream(event.kennelId, { type: 'device', deviceId: event.deviceId, status: event.status ?? 'unknown' });
+      }
+      if (event.type === 'device_crash') {
+        await handleCrashEvent(event).catch((e) => console.error('[engine] crash report failed', (e as Error).message));
+        continue;
+      }
+      try {
+        await ingestEvent(event);
+      } catch (e) {
+        console.error('[engine] ingest failed', (e as Error).message);
+      }
     }
-    if (event.type === 'device_crash') {
-      await handleCrashEvent(event).catch((e) => console.error('[engine] crash report failed', (e as Error).message));
-      continue;
-    }
-    try {
-      await ingestEvent(event);
-    } catch (e) {
-      console.error('[engine] ingest failed', (e as Error).message);
-    }
-  }
+  });
 }
 
 // ── Periodic sweeps ───────────────────────────────────────────────────────

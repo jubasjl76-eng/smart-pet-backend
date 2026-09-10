@@ -2,6 +2,7 @@ import mqtt, { MqttClient } from 'mqtt';
 import { EventEmitter } from 'events';
 import { query } from '../database/index.js';
 import { config, mqttUrl } from '../config/index.js';
+import { injectTrace } from '../mqtt/trace.js';
 
 const STATUS_WILDCARD = 'kennel/+/feeder/+/status';
 const ACK_TIMEOUT_MS = 15000;
@@ -115,6 +116,8 @@ export function publishCommand(
       return;
     }
     const topic = commandTopic(kennelId, deviceId, deviceType);
+    // W3C Trace Context so the device ack links to this command (Phase 16).
+    injectTrace(body as Record<string, unknown>);
     client.publish(topic, JSON.stringify(body), { qos: 2 }, (err) => {
       if (err) reject(err);
       else resolve();
