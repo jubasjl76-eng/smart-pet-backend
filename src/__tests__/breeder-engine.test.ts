@@ -41,6 +41,20 @@ describe('normaliseMessage', () => {
     expect(normaliseMessage('kennel/home/feeder/f1/event', '{"event":"jam"}')[0].type).toBe('jam');
   });
 
+  it('maps a firmware crash event, carrying the reason + heap in meta', () => {
+    const evs = normaliseMessage(
+      'kennel/home/feeder/f1/event',
+      JSON.stringify({ event: 'crash', reason: 'brownout', rawReason: 9, fw: '1.2.0', heapFree: 40000, minHeapFree: 12000 })
+    );
+    expect(evs).toHaveLength(1);
+    expect(evs[0]).toMatchObject({
+      type: 'device_crash',
+      deviceType: 'feeder',
+      deviceId: 'f1',
+      meta: { reason: 'brownout', rawReason: 9, fw: '1.2.0', heapFree: 40000, minHeapFree: 12000 },
+    });
+  });
+
   it('tolerates non-JSON payloads', () => {
     expect(() => normaliseMessage('kennel/home/sensor/t1/temperature', 'not json')).not.toThrow();
   });
