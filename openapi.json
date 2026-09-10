@@ -2487,6 +2487,152 @@
         }
       }
     },
+    "/api/breeder/fleet/health": {
+      "get": {
+        "tags": [
+          "breeder: fleet"
+        ],
+        "summary": "Fleet observability — version histogram, rollout progress, crashes by version.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "versions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "fw": {
+                            "type": "string"
+                          },
+                          "deviceType": {
+                            "type": "string"
+                          },
+                          "total": {
+                            "type": "number"
+                          },
+                          "online": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "fw",
+                          "deviceType",
+                          "total",
+                          "online"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "rollouts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "deviceType": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "percent": {
+                            "type": "number"
+                          },
+                          "total": {
+                            "type": "number"
+                          },
+                          "onTarget": {
+                            "type": "number"
+                          },
+                          "pending": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "deviceType",
+                          "version",
+                          "state",
+                          "percent",
+                          "total",
+                          "onTarget",
+                          "pending"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "crashes": {
+                      "type": "object",
+                      "properties": {
+                        "windowDays": {
+                          "type": "number"
+                        },
+                        "totalDevices": {
+                          "type": "number"
+                        },
+                        "crashFreeDevices": {
+                          "type": "number"
+                        },
+                        "byVersion": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "fw": {
+                                "type": "string"
+                              },
+                              "crashes": {
+                                "type": "number"
+                              },
+                              "devices": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "fw",
+                              "crashes",
+                              "devices"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "windowDays",
+                        "totalDevices",
+                        "crashFreeDevices",
+                        "byVersion"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "versions",
+                    "rollouts",
+                    "crashes"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
     "/api/breeder/fleet/devices/{deviceId}/ota": {
       "post": {
         "tags": [
