@@ -207,6 +207,96 @@ router.get(
 }),
 );
 
+// ── Observability (Phase 19) ───────────────────────────────────────────────
+router.get(
+  '/health',
+  apiRoute({
+    method: 'get', path: '/api/breeder/fleet/health', tags: T, secure: true,
+    summary: 'Fleet observability — version histogram, rollout progress, crashes by version.',
+    responses: {
+      200: {
+        description: 'ok',
+        schema: z.object({
+          versions: z.array(z.object({
+            fw: z.string(), deviceType: z.string(), total: z.number(), online: z.number(),
+          })),
+          rollouts: z.array(z.object({
+            deviceType: z.string(), version: z.string(), state: z.string(), percent: z.number(),
+            total: z.number(), onTarget: z.number(), pending: z.number(),
+          })),
+          crashes: z.object({
+            windowDays: z.number(), totalDevices: z.number(), crashFreeDevices: z.number(),
+            byVersion: z.array(z.object({ fw: z.string(), crashes: z.number(), devices: z.number() })),
+          }),
+        }),
+      },
+    },
+  }),
+  ah(async (req, res) => {
+    const WINDOW_DAYS = 30;
+    const devices = await query<{
+      device_id: string; device_type: string; is_online: boolean; fw_version: string | null;
+    }>(
+      `SELECT device_id, device_type, is_online, fw_version FROM devices WHERE kennel_id = $1`,
+      [req.kennelId],
+    );
+    const live = await liveRolloutsByType();
+
+    const vmap = new Map<string, { fw: string; deviceType: string; total: number; online: number }>();
+    const rmap = new Map<string, { deviceType: string; version: string; state: string; percent: number; total: number; onTarget: number; pending: number }>();
+    for (const d of devices) {
+      const fw = d.fw_version ?? 'unknown';
+      const vk = `${d.device_type} ${fw}`;
+      const v = vmap.get(vk) ?? { fw, deviceType: d.device_type, total: 0, online: 0 };
+      v.total++; if (d.is_online) v.online++;
+      vmap.set(vk, v);
+
+      const r = live.get(d.device_type);
+      if (!r) continue;
+      const e = rmap.get(d.device_type) ?? {
+        deviceType: d.device_type, version: r.version, state: r.rollout.state,
+        percent: r.rollout.percent, total: 0, onTarget: 0, pending: 0,
+      };
+      const st = deviceFwStatus(d.fw_version, deviceTarget(r.rollout, r.version, d.device_id));
+      e.total++;
+      if (st === 'up-to-date') e.onTarget++;
+      else if (st === 'pending') e.pending++;
+      rmap.set(d.device_type, e);
+    }
+
+    const byVersion = await query<{ fw: string; crashes: string; devices: string }>(
+      `SELECT COALESCE(NULLIF(split_part(dedup_key, ':', 3), ''), 'unknown') AS fw,
+              COUNT(*) AS crashes, COUNT(DISTINCT device_id) AS devices
+         FROM exceptions
+        WHERE kennel_id = $1 AND kind = 'device-crash'
+          AND created_at > NOW() - make_interval(days => $2)
+        GROUP BY 1 ORDER BY COUNT(*) DESC`,
+      [req.kennelId, WINDOW_DAYS],
+    );
+    const crashed = await queryOne<{ n: string }>(
+      `SELECT COUNT(DISTINCT device_id) AS n FROM exceptions
+        WHERE kennel_id = $1 AND kind = 'device-crash' AND device_id IS NOT NULL
+          AND created_at > NOW() - make_interval(days => $2)`,
+      [req.kennelId, WINDOW_DAYS],
+    );
+
+    res.json({
+      versions: [...vmap.values()].sort(
+        (a, b) => a.deviceType.localeCompare(b.deviceType) || b.total - a.total,
+      ),
+      rollouts: [...rmap.values()],
+      crashes: {
+        windowDays: WINDOW_DAYS,
+        totalDevices: devices.length,
+        crashFreeDevices: Math.max(0, devices.length - Number(crashed?.n ?? 0)),
+        byVersion: byVersion.map((c) => ({
+          fw: c.fw, crashes: Number(c.crashes), devices: Number(c.devices),
+        })),
+      },
+    });
+  }),
+);
+
 /** Push the OTA offer to one device now (canary / manual retry). */
 router.post(
   '/devices/:deviceId/ota',

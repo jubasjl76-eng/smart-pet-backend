@@ -58,6 +58,10 @@ beforeAll(async () => {
       id BIGSERIAL PRIMARY KEY, kennel_id VARCHAR(255) NOT NULL, user_id UUID, action VARCHAR(40) NOT NULL,
       subject_type VARCHAR(20), subject_id VARCHAR(255), ip VARCHAR(64), detail JSONB NOT NULL DEFAULT '{}'::jsonb,
       at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+    CREATE TABLE exceptions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(), kennel_id VARCHAR(255) NOT NULL,
+      kind VARCHAR(64) NOT NULL, device_id VARCHAR(255), dedup_key VARCHAR(255),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
   `);
   await db.exec(readFileSync(join(M, '011_fleet_firmware.sql'), 'utf8'));
   await db.exec(readFileSync(join(M, '014_ota_provenance.sql'), 'utf8'));
@@ -153,5 +157,18 @@ describe('fleetSweep + GET /devices', () => {
     const r = await fleetSweep();
     expect(r.pushed).toBe(0);
     expect(publishCommand).not.toHaveBeenCalled();
+  });
+
+  it('GET /health — version histogram + rollout progress + crash window', async () => {
+    // from the prior test: 15 online + 1 offline feeder, all now on 2.0.0
+    const h = await (await fetch(`${base}/health`)).json();
+    const v200 = h.versions.find((v: { fw: string }) => v.fw === '2.0.0');
+    expect(v200).toMatchObject({ deviceType: 'feeder', total: 16, online: 15 });
+
+    const rp = h.rollouts.find((r: { deviceType: string }) => r.deviceType === 'feeder');
+    expect(rp).toMatchObject({ version: '2.0.0', total: 16, onTarget: 16, pending: 0 });
+
+    expect(h.crashes).toMatchObject({ windowDays: 30, totalDevices: 16, crashFreeDevices: 16 });
+    expect(Array.isArray(h.crashes.byVersion)).toBe(true);
   });
 });
