@@ -10,7 +10,7 @@ import { z } from '@jubasjl76-eng/shared';
 import { query, queryOne, execute } from '../../database/index.js';
 import { ah, bad } from '../http.js';
 import { apiRoute } from '../../openapi/index.js';
-import { publishCommand } from '../../services/feederMqtt.js';
+import { publishCommand, publishFleetControl } from '../../services/feederMqtt.js';
 import { logAccess } from '../accessLog.js';
 import { deviceTarget, deviceFwStatus, type Rollout } from '../logic/rollout.js';
 
@@ -272,6 +272,87 @@ router.post(
   ah(async (_req, res) => {
   res.json(await fleetSweep());
 }),
+);
+
+// ── Kill switch (Phase 19, A12 #17) ────────────────────────────────────────
+const controlShape = z.object({
+  safeMode: z.boolean(),
+  reason: z.string().nullable(),
+  updatedAt: z.string().nullable(),
+});
+
+router.get(
+  '/control',
+  apiRoute({
+    method: 'get', path: '/api/breeder/fleet/control', tags: T, secure: true,
+    summary: 'Current fleet kill-switch state for the kennel.',
+    responses: { 200: { description: 'ok', schema: controlShape } },
+  }),
+  ah(async (req, res) => {
+    const row = await queryOne<{ safe_mode: boolean; reason: string | null; updated_at: string }>(
+      `SELECT safe_mode, reason, updated_at FROM fleet_control WHERE kennel_id = $1`,
+      [req.kennelId],
+    );
+    res.json({
+      safeMode: row?.safe_mode ?? false,
+      reason: row?.reason ?? null,
+      updatedAt: row?.updated_at ?? null,
+    });
+  }),
+);
+
+async function setSafeMode(kennelId: string, userId: string | null, safeMode: boolean, reason: string | null) {
+  await execute(
+    `INSERT INTO fleet_control (kennel_id, safe_mode, reason, set_by, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+     ON CONFLICT (kennel_id) DO UPDATE
+       SET safe_mode = EXCLUDED.safe_mode, reason = EXCLUDED.reason,
+           set_by = EXCLUDED.set_by, updated_at = NOW()`,
+    [kennelId, safeMode, reason, userId],
+  );
+  // DB is the source of truth; the broker re-syncs on connect if this fails now.
+  let broker = true;
+  try {
+    await publishFleetControl(kennelId, {
+      safeMode,
+      reason: reason ?? undefined,
+      at: new Date().toISOString(),
+      by: userId ?? undefined,
+    });
+  } catch {
+    broker = false;
+  }
+  return broker;
+}
+
+router.post(
+  '/halt',
+  apiRoute({
+    method: 'post', path: '/api/breeder/fleet/halt', tags: T, secure: true,
+    summary: 'Halt the whole kennel: devices stop actuating, keep reporting.',
+    request: { body: z.object({ reason: z.string().max(280).optional() }) },
+    responses: { 200: { description: 'ok', schema: z.object({ safeMode: z.boolean(), brokerPublished: z.boolean() }) } },
+  }),
+  ah(async (req, res) => {
+    const reason = (req.body?.reason ?? '').toString().trim() || null;
+    const broker = await setSafeMode(req.kennelId!, req.user?.id ?? null, true, reason);
+    await logAccess(req, 'fleet.halt', { detail: { reason } });
+    res.json({ safeMode: true, brokerPublished: broker });
+  }),
+);
+
+router.post(
+  '/resume',
+  apiRoute({
+    method: 'post', path: '/api/breeder/fleet/resume', tags: T, secure: true,
+    summary: 'Lift the kennel halt — devices resume normal operation.',
+    responses: { 200: { description: 'ok', schema: z.object({ safeMode: z.boolean(), brokerPublished: z.boolean() }) } },
+  }),
+  ah(async (req, res) => {
+    const broker = await setSafeMode(req.kennelId!, req.user?.id ?? null, false, null);
+    await logAccess(req, 'fleet.resume', {});
+    res.json({ safeMode: false, brokerPublished: broker });
+  }),
 );
 
 // ── helpers ────────────────────────────────────────────────────────────────
