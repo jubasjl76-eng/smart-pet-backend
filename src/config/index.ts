@@ -61,6 +61,9 @@ const schema = z.object({
   SENTRY_RELEASE: z.string().optional(),
   SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).optional(),
 
+  // observability (Phase 16) — /metrics is open unless this bearer token is set.
+  METRICS_TOKEN: z.string().optional(),
+
   NOTIFY_EMAIL_FROM: z.string().optional(),
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_FROM: z.string().optional(),

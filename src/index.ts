@@ -29,6 +29,7 @@ import {
 import { getFlags } from './services/flags.js';
 import { buildOpenApiDoc, docsHtml } from './openapi/index.js';
 import { VERSION } from './version.js';
+import { httpMetricsMiddleware, metricsHandler } from './metrics.js';
 
 const app: Express = express();
 const PORT = 3000;
@@ -41,6 +42,7 @@ console.log('[boot] config', safeConfig());
 app.set('trust proxy', false);
 app.use(cors());
 app.use(express.json());
+app.use(httpMetricsMiddleware);
 
 // API versioning (Phase 14, A1). `/api/v1/*` is the versioned path; bare `/api/*`
 // is a deprecated alias for the transition window — it still works but carries
@@ -102,6 +104,9 @@ app.get('/ready', async (_req: Request, res: Response) => {
   const ok = db && mqtt && !shuttingDown;
   res.status(ok ? 200 : 503).json({ status: ok ? 'ready' : 'not-ready', db, mqtt, shuttingDown });
 });
+
+// Prometheus metrics (Phase 16). Scraped by the Grafana Cloud agent.
+app.get('/metrics', metricsHandler);
 
 // OpenAPI spec + a Scalar reference UI (Phase 14). Routes are added to the spec
 // file-by-file as they move onto the zod registry.
