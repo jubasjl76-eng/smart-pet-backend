@@ -4,11 +4,14 @@
  * (see its docs/public-api.md — that file is the canonical contract).
  */
 import { Router } from 'express';
+import { z } from '@jubasjl76-eng/shared';
 import { query, queryOne } from '../../database/index.js';
-import { ah, bad, need } from '../http.js';
+import { ah, bad } from '../http.js';
+import { apiRoute } from '../../openapi/index.js';
 import { raiseException } from '../exceptions.js';
 
 const router = Router();
+const T = ['public'];
 
 // The public site is one operation → one kennel.
 async function publicKennel() {
@@ -128,6 +131,11 @@ async function loadLitter(row: Record<string, unknown>) {
 // ── routes ───────────────────────────────────────────────────────────────
 router.get(
   '/kennel',
+  apiRoute({
+    method: 'get', path: '/api/public/kennel', tags: T,
+    summary: 'Public kennel profile.',
+    responses: { 200: { description: 'ok' }, 404: { description: 'not found' } },
+  }),
   ah(async (_req, res) => {
     const k = await publicKennel();
     if (!k) return bad(res, 'Not found', 404);
@@ -155,6 +163,11 @@ router.get(
 
 router.get(
   '/dogs',
+  apiRoute({
+    method: 'get', path: '/api/public/dogs', tags: T,
+    summary: 'Published breeding / retired dogs.',
+    responses: { 200: { description: 'ok' } },
+  }),
   ah(async (_req, res) => {
     const k = await publicKennel();
     if (!k) return res.json([]);
@@ -170,6 +183,11 @@ router.get(
 
 router.get(
   '/litters',
+  apiRoute({
+    method: 'get', path: '/api/public/litters', tags: T,
+    summary: 'Published litters with puppies.',
+    responses: { 200: { description: 'ok' } },
+  }),
   ah(async (_req, res) => {
     const k = await publicKennel();
     if (!k) return res.json([]);
@@ -183,6 +201,12 @@ router.get(
 
 router.get(
   '/litters/:id',
+  apiRoute({
+    method: 'get', path: '/api/public/litters/{id}', tags: T,
+    summary: 'One published litter.',
+    request: { params: z.object({ id: z.string() }) },
+    responses: { 200: { description: 'ok' }, 404: { description: 'not found' } },
+  }),
   ah(async (req, res) => {
     const k = await publicKennel();
     if (!k) return bad(res, 'Not found', 404);
@@ -212,10 +236,22 @@ function rateLimited(ip: string): boolean {
 
 router.post(
   '/inquiries',
+  apiRoute({
+    method: 'post', path: '/api/public/inquiries', tags: T,
+    summary: 'Submit a website inquiry (rate-limited per IP).',
+    request: {
+      body: z.object({
+        name: z.string().min(1),
+        email: z.string().min(1),
+        phone: z.string().optional(),
+        message: z.string().optional(),
+        litterId: z.string().optional(),
+        puppyId: z.string().optional(),
+      }),
+    },
+    responses: { 201: { description: 'created' }, 429: { description: 'too many requests' } },
+  }),
   ah(async (req, res) => {
-    const err = need(req.body, ['name', 'email']);
-    if (err) return bad(res, err);
-
     const fwd = req.headers['x-forwarded-for'];
     const ip = (
       (typeof fwd === 'string' ? fwd : '') ||
