@@ -20,7 +20,9 @@ import '../breeder/routes/website.js';
 import '../breeder/routes/public.js';
 import '../routes/devices.js';
 import '../routes/schedules.js';
-import '../routes/events.js'; // keep in sync with src/openapi/dump.ts
+import '../routes/events.js';
+import '../routes/setup.js';
+import '../routes/users.js'; // keep in sync with src/openapi/dump.ts
 
 describe('openapi.json', () => {
   it('is up to date — run `npm run openapi:dump` if this fails', () => {

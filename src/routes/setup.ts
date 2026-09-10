@@ -10,12 +10,15 @@
  * wizard just calls them. This module only adds the kennel record + the flag.
  */
 import { Router, type Response } from 'express';
+import { z } from '@jubasjl76-eng/shared';
 import { query, queryOne, execute } from '../database/index.js';
+import { apiRoute } from '../openapi/index.js';
 import { auth, type AuthRequest } from '../middleware/auth.js';
 import { runSeed } from '../database/seed.js';
 
 const router = Router();
 router.use(auth);
+const T = ['owner: setup'];
 
 function slugify(s: string): string {
   return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'kennel';
@@ -32,7 +35,7 @@ async function canAdminKennel(req: AuthRequest, kennel: any | null): Promise<boo
   return kennel.owner_user_id === req.user.id || req.user.role === 'owner';
 }
 
-router.get('/status', async (req: AuthRequest, res: Response) => {
+router.get('/status', apiRoute({ method: 'get', path: '/api/setup/status', tags: T, secure: true, summary: 'First-run setup progress (drives the wizard).', responses: { 200: { description: 'ok' } } }), async (req: AuthRequest, res: Response) => {
   const kennel = await theKennel();
   const kennelId = kennel?.slug ?? null;
   const counts = kennelId
@@ -63,7 +66,7 @@ router.get('/status', async (req: AuthRequest, res: Response) => {
   });
 });
 
-router.post('/kennel', async (req: AuthRequest, res: Response) => {
+router.post('/kennel', apiRoute({ method: 'post', path: '/api/setup/kennel', tags: T, secure: true, summary: 'Create / update THE kennel.', request: { body: z.object({ name: z.string().optional(), breedFocus: z.string().optional(), timezone: z.string().optional() }) }, responses: { 200: { description: 'updated' }, 201: { description: 'created' }, 403: { description: 'not the owner' } } }), async (req: AuthRequest, res: Response) => {
   const kennel = await theKennel();
   if (!(await canAdminKennel(req, kennel))) {
     res.status(403).json({ error: 'Only the kennel owner can do this' });
@@ -102,7 +105,7 @@ router.post('/kennel', async (req: AuthRequest, res: Response) => {
   });
 });
 
-router.post('/complete', async (req: AuthRequest, res: Response) => {
+router.post('/complete', apiRoute({ method: 'post', path: '/api/setup/complete', tags: T, secure: true, summary: 'Mark setup finished.', responses: { 200: { description: 'ok' }, 400: { description: 'no kennel yet' }, 403: { description: 'not the owner' } } }), async (req: AuthRequest, res: Response) => {
   const kennel = await theKennel();
   if (!kennel) {
     res.status(400).json({ error: 'Create the kennel first' });
@@ -119,7 +122,7 @@ router.post('/complete', async (req: AuthRequest, res: Response) => {
   res.json({ setupComplete: true });
 });
 
-router.post('/seed-demo', async (req: AuthRequest, res: Response) => {
+router.post('/seed-demo', apiRoute({ method: 'post', path: '/api/setup/seed-demo', tags: T, secure: true, summary: 'One-shot demo seed (pens + dam + sire + preset rules).', responses: { 200: { description: 'ok' }, 400: { description: 'no kennel yet' }, 403: { description: 'not the owner' } } }), async (req: AuthRequest, res: Response) => {
   const kennel = await theKennel();
   if (!kennel) {
     res.status(400).json({ error: 'Create the kennel first' });
