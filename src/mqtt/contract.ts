@@ -1,36 +1,48 @@
 /**
- * LOCKED MQTT contract (24 Sep feeder command path).
- * kennelId = household string. No topic fork (no devices/<id>/telemetry).
+ * Feeder command path (24 Sep locked wire format), now built on the shared
+ * contract package.
+ *
+ * The topic scheme + QoS/retain policy come from `@jubasjl76-eng/mqtt-contract`
+ * (hardening Phase 14, ADR-0001) — the strings are byte-identical to what this
+ * module used to hand-roll, and `command-path`/`status-ingest` tests pin them.
+ *
+ * The PAYLOAD layer below stays local on purpose: the deployed feeder firmware
+ * speaks a v1 dialect (no `command.id`, permissive `status` string) that the
+ * package's v2 `buildFeed` / `parseStatus` would break. Converging those needs
+ * a firmware rev + staged rollout, tracked separately.
  *
  * Device ACL (broker): username device:<deviceId>
  *   SUB kennel/{kennelId}/feeder/{deviceId}/command  only
  *   PUB kennel/{kennelId}/feeder/{deviceId}/status   only
- * Backend (this process) publishes command QoS 2 and subscribes status QoS 1.
  */
+import {
+  commandTopic as pkgCommandTopic,
+  statusTopic as pkgStatusTopic,
+  allOf,
+  parseTopic,
+  deliveryFor,
+} from '@jubasjl76-eng/mqtt-contract';
 
-export const COMMAND_QOS = 2 as const;
-export const STATUS_QOS = 1 as const;
-export const STATUS_RETAINED = true;
+export const COMMAND_QOS = deliveryFor('command').qos; // 2
+export const STATUS_QOS = deliveryFor('status').qos; // 1
+export const STATUS_RETAINED = deliveryFor('status').retain; // true
 
 export function commandTopic(kennelId: string, deviceId: string): string {
-  return `kennel/${kennelId}/feeder/${deviceId}/command`;
+  return pkgCommandTopic(kennelId, 'feeder', deviceId);
 }
 
 export function statusTopic(kennelId: string, deviceId: string): string {
-  return `kennel/${kennelId}/feeder/${deviceId}/status`;
+  return pkgStatusTopic(kennelId, 'feeder', deviceId);
 }
 
 export function statusSubscribeFilter(): string {
-  return 'kennel/+/feeder/+/status';
+  return allOf('feeder', 'status'); // kennel/+/feeder/+/status
 }
 
 export function parseStatusTopic(topic: string): { kennelId: string; deviceId: string } | null {
-  const parts = topic.split('/');
-  if (parts.length !== 5) return null;
-  const [kennel, kennelId, feeder, deviceId, leaf] = parts;
-  if (kennel !== 'kennel' || feeder !== 'feeder' || leaf !== 'status') return null;
-  if (!kennelId || !deviceId) return null;
-  return { kennelId, deviceId };
+  const parts = parseTopic(topic);
+  if (!parts || parts.deviceType !== 'feeder' || parts.leaf !== 'status') return null;
+  return { kennelId: parts.kennelId, deviceId: parts.deviceId };
 }
 
 export type FeedCommand = {
