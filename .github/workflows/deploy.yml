@@ -63,6 +63,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      attestations: write # SBOM + SLSA provenance on the pushed image (Phase 18)
     uses: jubasjl76-eng/smart-pet-ci/.github/workflows/deploy-ecs.yml@main
     secrets: inherit   # SENTRY_AUTH_TOKEN / SENTRY_ORG (org secrets), if set
     with:
