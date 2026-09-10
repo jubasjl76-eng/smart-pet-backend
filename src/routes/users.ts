@@ -10,20 +10,23 @@
  * Accepting an invite is POST /api/auth/accept-invite (no auth).
  */
 import { Router, type Response } from 'express';
+import { z } from '@jubasjl76-eng/shared';
 import { query, queryOne, execute } from '../database/index.js';
+import { apiRoute } from '../openapi/index.js';
 import { auth, ownerOnly, type AuthRequest } from '../middleware/auth.js';
 import { createInvite, listInvites, revokeInvite } from '../auth/invites.js';
 import { revokeAllForUser } from '../auth/tokens.js';
 
 const router = Router();
 router.use(auth, ownerOnly);
+const T = ['owner: users'];
 
 async function callerKennel(req: AuthRequest): Promise<string> {
   const row = await queryOne<{ kennel_id: string | null }>('SELECT kennel_id FROM users WHERE id = $1', [req.user!.id]);
   return row?.kennel_id ?? process.env.BREEDER_KENNEL_SLUG ?? 'home';
 }
 
-router.get('/', async (req: AuthRequest, res: Response) => {
+router.get('/', apiRoute({ method: 'get', path: '/api/users', tags: T, secure: true, summary: 'Users in the kennel.', responses: { 200: { description: 'ok' } } }), async (req: AuthRequest, res: Response) => {
   const kennelId = await callerKennel(req);
   const users = await query(
     `SELECT id, email, name, role, active, created_at FROM users WHERE kennel_id = $1 ORDER BY created_at`,
@@ -32,7 +35,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   res.json({ users });
 });
 
-router.post('/invite', async (req: AuthRequest, res: Response) => {
+router.post('/invite', apiRoute({ method: 'post', path: '/api/users/invite', tags: T, secure: true, summary: 'Invite a user (returns a token; email delivery is Phase 3).', request: { body: z.object({ email: z.string().optional(), role: z.enum(['owner', 'staff']).optional() }) }, responses: { 201: { description: 'created' }, 400: { description: 'invalid email' } } }), async (req: AuthRequest, res: Response) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const role = req.body?.role === 'owner' ? 'owner' : 'staff';
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
@@ -55,16 +58,16 @@ router.post('/invite', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.get('/invites', async (req: AuthRequest, res: Response) => {
+router.get('/invites', apiRoute({ method: 'get', path: '/api/users/invites', tags: T, secure: true, summary: 'Open + recent invites.', responses: { 200: { description: 'ok' } } }), async (req: AuthRequest, res: Response) => {
   res.json({ invites: await listInvites(await callerKennel(req)) });
 });
 
-router.delete('/invites/:token', async (req: AuthRequest, res: Response) => {
+router.delete('/invites/:token', apiRoute({ method: 'delete', path: '/api/users/invites/{token}', tags: T, secure: true, summary: 'Revoke an invite.', request: { params: z.object({ token: z.string() }) }, responses: { 200: { description: 'ok' }, 404: { description: 'not found' } } }), async (req: AuthRequest, res: Response) => {
   const ok = await revokeInvite(String(req.params.token), await callerKennel(req));
   res.status(ok ? 200 : 404).json({ ok });
 });
 
-router.patch('/:id', async (req: AuthRequest, res: Response) => {
+router.patch('/:id', apiRoute({ method: 'patch', path: '/api/users/{id}', tags: T, secure: true, summary: 'Update a user’s role / active state.', request: { params: z.object({ id: z.string() }), body: z.object({ role: z.enum(['owner', 'staff']).optional(), active: z.boolean().optional() }) }, responses: { 200: { description: 'ok' }, 400: { description: 'guard rail' }, 404: { description: 'not found' } } }), async (req: AuthRequest, res: Response) => {
   const kennelId = await callerKennel(req);
   const target = await queryOne<any>(
     `SELECT id, role, active FROM users WHERE id = $1 AND kennel_id = $2`,

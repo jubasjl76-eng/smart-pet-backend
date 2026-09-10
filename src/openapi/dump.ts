@@ -28,6 +28,8 @@ import '../breeder/routes/public.js';
 import '../routes/devices.js';
 import '../routes/schedules.js';
 import '../routes/events.js';
+import '../routes/setup.js';
+import '../routes/users.js';
 // + more route files as they migrate onto the zod registry
 import { buildOpenApiDoc } from './index.js';
 
