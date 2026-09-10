@@ -2566,6 +2566,151 @@
         }
       }
     },
+    "/api/breeder/fleet/control": {
+      "get": {
+        "tags": [
+          "breeder: fleet"
+        ],
+        "summary": "Current fleet kill-switch state for the kennel.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "safeMode": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "nullable": true,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "safeMode",
+                    "reason",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/fleet/halt": {
+      "post": {
+        "tags": [
+          "breeder: fleet"
+        ],
+        "summary": "Halt the whole kennel: devices stop actuating, keep reporting.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 280
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "safeMode": {
+                      "type": "boolean"
+                    },
+                    "brokerPublished": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "safeMode",
+                    "brokerPublished"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/breeder/fleet/resume": {
+      "post": {
+        "tags": [
+          "breeder: fleet"
+        ],
+        "summary": "Lift the kennel halt — devices resume normal operation.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "safeMode": {
+                      "type": "boolean"
+                    },
+                    "brokerPublished": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "safeMode",
+                    "brokerPublished"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
     "/api/breeder/documents": {
       "post": {
         "tags": [

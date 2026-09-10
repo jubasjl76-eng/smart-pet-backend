@@ -44,6 +44,45 @@ export function statusTopic(kennelId: string, deviceId: string): string {
   return `kennel/${kennelId}/feeder/${deviceId}/status`;
 }
 
+// Fleet kill switch (Phase 19, A12 #17). Retained, kennel-wide.
+export function fleetControlTopic(kennelId: string): string {
+  return `kennel/${kennelId}/_control`;
+}
+
+export function publishFleetControl(
+  kennelId: string,
+  body: { safeMode: boolean; reason?: string; at?: string; by?: string },
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!client || !client.connected) {
+      reject(new Error('MQTT broker not connected'));
+      return;
+    }
+    client.publish(fleetControlTopic(kennelId), JSON.stringify(body), { qos: 1, retain: true }, (err) =>
+      err ? reject(err) : resolve(),
+    );
+  });
+}
+
+async function resyncFleetControl(): Promise<void> {
+  try {
+    const { query } = await import('../database/index.js');
+    const rows = await query<{ kennel_id: string; reason: string | null; updated_at: string }>(
+      `SELECT kennel_id, reason, updated_at FROM fleet_control WHERE safe_mode = true`,
+    );
+    for (const r of rows) {
+      await publishFleetControl(r.kennel_id, {
+        safeMode: true,
+        reason: r.reason ?? undefined,
+        at: new Date(r.updated_at).toISOString(),
+      }).catch(() => {});
+    }
+    if (rows.length) mlog.warn({ kennels: rows.length }, 're-asserted fleet safe-mode');
+  } catch (e) {
+    mlog.error({ err: e }, 'fleet-control resync failed');
+  }
+}
+
 function parseStatus(raw: Buffer): StatusPayload | null {
   try {
     const p = JSON.parse(raw.toString());
@@ -96,6 +135,9 @@ export function startFeederMqtt(): void {
     client!.subscribe(STATUS_WILDCARD, { qos: 1 }, (err) => {
       if (err) mlog.error({ err }, 'status subscribe failed');
     });
+    // Re-assert the retained kill-switch state for any halted kennel — the
+    // broker may have lost retained messages across a restart.
+    void resyncFleetControl();
   });
   client.on('message', async (topic, payload) => {
     if (!topic.endsWith('/status')) return;
