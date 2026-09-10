@@ -31,8 +31,8 @@ beforeAll(async () => {
     CREATE TABLE devices (device_id VARCHAR(255) PRIMARY KEY, kennel_id VARCHAR(255));
   `);
   await db.exec(BREEDER_DDL);
-  for (const f of ['004_vaccinations.sql', '005_buyer_comms.sql', '006_breeding_calendar.sql',
-    '007_documents.sql', '009_access_log.sql', '010_retention.sql']) {
+  for (const f of ['004_vaccinations.sql', '005_buyer_comms.sql', '006_breeding_calendar.sql', // gitleaks:allow — migration filenames, not a key
+    '007_documents.sql', '009_access_log.sql', '010_retention.sql']) { // gitleaks:allow
     await db.exec(mig(f));
   }
 
