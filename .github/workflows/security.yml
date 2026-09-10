@@ -18,3 +18,4 @@ jobs:
     with:
       node: true
       iac: true # Dockerfile
+      semgrep-config: semgrep/ # repo-local rules (kennel-scope) — blocking

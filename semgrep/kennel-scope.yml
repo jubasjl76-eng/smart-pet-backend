@@ -1,0 +1,36 @@
+rules:
+  - id: breeder-query-must-be-kennel-scoped
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      This query under src/breeder touches a tenant table but the call has no
+      `kennel_id` predicate. A missing `WHERE kennel_id` leaks data across
+      kennels (A12 #26). Scope it by `req.kennelId` / the withKennel context,
+      or — if it is deliberately global (migration, cross-kennel sweep, a WHERE
+      clause built elsewhere) — add
+      `// nosemgrep: breeder-query-must-be-kennel-scoped` with a one-line reason.
+    metadata:
+      category: security
+      confidence: MEDIUM
+    paths:
+      include:
+        - /src/breeder/
+    patterns:
+      - pattern-either:
+          - pattern: query($SQL, ...)
+          - pattern: queryOne($SQL, ...)
+          - pattern: execute($SQL, ...)
+          - pattern: $DB.query($SQL, ...)
+      # $SQL mentions a tenant table. metavariable-regex is a full match, hence
+      # the leading/trailing `.*`.
+      - metavariable-regex:
+          metavariable: $SQL
+          regex: >-
+            (?is).*\b(from|join|update|into)\s+"?(animals|buyers|litters|puppies|pens|rules|rule_firings|medications|medication_logs|exceptions|care_plans|consumables|weight_readings|intake_events|enrichment_sessions|emergency_events|notifications|notification_prefs|heat_cycles|buyer_messages|update_pack_subscriptions|documents|document_templates|vaccination_records|vaccination_protocols|access_log|retention_settings|safe_zones|device_health_counters|offline_journal|device_pairings)\b.*
+      # `kennel_id` anywhere in the call (SQL body or a joined fragment) => scoped.
+      - pattern-not-regex: kennel_id
+      # A lookup keyed on some `*id` column (WHERE id / animal_id / litter_id …)
+      # is the accepted "load a kennel-checked parent, then traverse by its id"
+      # pattern (audited 2026-09). Only queries with NO id predicate — a full
+      # scan or a filter on a non-id column — are real leaks.
+      - pattern-not-regex: (?i)\bwhere\b[\s\S]*?\b\w*id\b\s*(=|in\b)
