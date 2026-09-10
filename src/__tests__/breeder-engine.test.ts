@@ -41,10 +41,13 @@ describe('normaliseMessage', () => {
     expect(normaliseMessage('kennel/home/feeder/f1/event', '{"event":"jam"}')[0].type).toBe('jam');
   });
 
-  it('maps a firmware crash event, carrying the reason + heap in meta', () => {
+  it('maps a firmware crash event (fields under `data`, as the SDK sends them)', () => {
     const evs = normaliseMessage(
       'kennel/home/feeder/f1/event',
-      JSON.stringify({ event: 'crash', reason: 'brownout', rawReason: 9, fw: '1.2.0', heapFree: 40000, minHeapFree: 12000 })
+      JSON.stringify({
+        event: 'crash',
+        data: { reason: 'brownout', rawReason: 9, fw: '1.2.0', heapFree: 40000, minHeapFree: 12000 },
+      })
     );
     expect(evs).toHaveLength(1);
     expect(evs[0]).toMatchObject({
@@ -53,6 +56,14 @@ describe('normaliseMessage', () => {
       deviceId: 'f1',
       meta: { reason: 'brownout', rawReason: 9, fw: '1.2.0', heapFree: 40000, minHeapFree: 12000 },
     });
+  });
+
+  it('also accepts crash fields at the top level (defensive)', () => {
+    const evs = normaliseMessage(
+      'kennel/home/feeder/f1/event',
+      JSON.stringify({ event: 'crash', reason: 'panic', fw: '1.0.0' })
+    );
+    expect(evs[0]).toMatchObject({ type: 'device_crash', meta: { reason: 'panic', fw: '1.0.0' } });
   });
 
   it('tolerates non-JSON payloads', () => {

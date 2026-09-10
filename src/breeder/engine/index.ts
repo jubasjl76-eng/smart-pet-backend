@@ -51,15 +51,19 @@ export function normaliseMessage(topic: string, payloadRaw: Buffer | string): Ru
     if (kind === 'dispense' || kind === 'dispense_acked') events.push({ ...base, type: 'dispense_acked', value: Number(p.seconds ?? p.durationSec ?? 0) });
     if (kind === 'door_open' || kind === 'door_opened') events.push({ ...base, type: 'door_opened' });
     if (kind === 'jam') events.push({ ...base, type: 'jam' });
-    if (kind === 'crash') events.push({
-      ...base,
-      type: 'device_crash',
-      meta: {
-        ...base.meta,
-        reason: p.reason, rawReason: p.rawReason, fw: p.fw,
-        heapFree: p.heapFree, minHeapFree: p.minHeapFree,
-      },
-    });
+    if (kind === 'crash') {
+      // spd_mqtt publishEvent() nests the fill() fields under `data`.
+      const cd = (p.data && typeof p.data === 'object') ? p.data : p;
+      events.push({
+        ...base,
+        type: 'device_crash',
+        meta: {
+          ...base.meta,
+          reason: cd.reason, rawReason: cd.rawReason, fw: cd.fw,
+          heapFree: cd.heapFree, minHeapFree: cd.minHeapFree,
+        },
+      });
+    }
   } else if (leaf === 'location') {
     if (typeof p.battery === 'number') events.push({ ...base, type: 'low_battery', value: p.battery, metric: 'battery' });
   } else if (['temperature', 'humidity', 'airquality'].includes(leaf)) {
