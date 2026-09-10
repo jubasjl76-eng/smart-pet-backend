@@ -25,6 +25,9 @@ import '../breeder/routes/ops.js';
 import '../breeder/routes/devices.js';
 import '../breeder/routes/website.js';
 import '../breeder/routes/public.js';
+import '../routes/devices.js';
+import '../routes/schedules.js';
+import '../routes/events.js';
 // + more route files as they migrate onto the zod registry
 import { buildOpenApiDoc } from './index.js';
 
