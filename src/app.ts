@@ -8,6 +8,7 @@
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import * as Sentry from '@sentry/node';
 import cors from 'cors';
+import helmet from 'helmet';
 
 import authRoutes from './routes/auth.js';
 import deviceRoutes from './routes/devices.js';
@@ -39,6 +40,20 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
   const app: Express = express();
 
   app.set('trust proxy', false);
+
+  // Security headers (Phase 18, A12 #11). This is a JSON API — a response body
+  // should never pull in resources — so the CSP is `default-src 'none'`. HSTS,
+  // nosniff, frameguard, referrer-policy etc. come from helmet's defaults;
+  // `X-Powered-By` is dropped. CORP is `cross-origin` so the dashboard / app
+  // (separate origins) can read responses. `/docs` overrides the CSP below.
+  app.use(helmet({
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: { 'default-src': ["'none'"], 'frame-ancestors': ["'none'"] },
+    },
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  }));
+
   app.use(cors());
   app.use(express.json());
   app.use(httpMetricsMiddleware);
@@ -81,9 +96,24 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
   // Prometheus metrics (Phase 16).
   app.get('/metrics', metricsHandler);
 
-  // OpenAPI spec + a Scalar reference UI (Phase 14).
+  // OpenAPI spec + a Scalar reference UI (Phase 14). The UI loads Scalar from
+  // jsdelivr and runs inline, so `/docs` gets a looser CSP than the API default.
+  // ponytail: self-host @scalar/api-reference to drop the CDN + 'unsafe-inline'.
+  const docsCsp = helmet.contentSecurityPolicy({
+    useDefaults: false,
+    directives: {
+      'default-src': ["'self'"],
+      'script-src': ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
+      'style-src': ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net', 'https://fonts.googleapis.com'],
+      'font-src': ["'self'", 'https://fonts.gstatic.com', 'data:'],
+      'img-src': ["'self'", 'data:', 'https:'],
+      'connect-src': ["'self'"],
+      'worker-src': ["'self'", 'blob:'],
+      'frame-ancestors': ["'none'"],
+    },
+  });
   app.get('/openapi.json', (_req: Request, res: Response) => res.json(buildOpenApiDoc()));
-  app.get('/docs', (_req: Request, res: Response) => res.type('html').send(docsHtml));
+  app.get('/docs', docsCsp, (_req: Request, res: Response) => res.type('html').send(docsHtml));
 
   // Non-secret runtime config for the dashboard / app (no auth).
   app.get('/api/config', async (_req: Request, res: Response) => {
