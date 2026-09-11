@@ -14,6 +14,8 @@ import { idempotent } from '../../middleware/idempotency.js';
 import { publishCommand, publishFleetControl } from '../../services/feederMqtt.js';
 import { logAccess } from '../accessLog.js';
 import { deviceTarget, deviceFwStatus, type Rollout } from '../logic/rollout.js';
+import { getQueue } from '../../jobs/queue.js';
+import type { Job } from 'pg-boss';
 
 const router = Router();
 const T = ['breeder: fleet'];
@@ -452,6 +454,9 @@ router.post(
 );
 
 // ── Engine sweep: nudge in-bucket online devices onto the rollout target ────
+// Enqueues one fleet-ota-push job per candidate (Phase 20, A12 #3) instead of
+// pushing inline — a pg-boss worker (below) does the actual publish, with
+// real retry/backoff/DLQ instead of "swallow the error, next tick retries".
 export async function fleetSweep(): Promise<{ pushed: number }> {
   const live = await liveRolloutsByType();
   if (live.size === 0) return { pushed: 0 };
@@ -472,10 +477,15 @@ export async function fleetSweep(): Promise<{ pushed: number }> {
       const target = deviceTarget(r.rollout, r.version, d.device_id);
       if (!target || d.fw_version === target) continue;
       try {
-        await sendOta(d.kennel_id, d.device_id, deviceType, r.fw);
+        await enqueueOtaPush({
+          kennelId: d.kennel_id,
+          deviceId: d.device_id,
+          deviceType,
+          fw: r.fw,
+        });
         pushed++;
       } catch {
-        // broker down or device unreachable — next tick retries
+        // queue unavailable — next tick retries
       }
     }
   }
@@ -657,6 +667,47 @@ async function sendOta(
     },
     deviceType,
   );
+}
+
+// ── fleet-ota-push job (Phase 20, A12 #3) ───────────────────────────────────
+// fleetSweep() enqueues one of these per candidate device instead of calling
+// sendOta() inline; a worker (registered by registerFleetOtaWorker(), called
+// once at boot) does the actual publish. The firmware snapshot (`fw`) is
+// captured at enqueue time — a retry re-sends exactly what the sweep decided,
+// even if the live rollout has since moved on.
+const OTA_PUSH_QUEUE = 'fleet-ota-push';
+const OTA_PUSH_DLQ = 'fleet-ota-push-dlq';
+
+interface OtaPushPayload {
+  kennelId: string;
+  deviceId: string;
+  deviceType: string;
+  fw: FwRow;
+}
+
+async function enqueueOtaPush(payload: OtaPushPayload): Promise<void> {
+  await getQueue().send(OTA_PUSH_QUEUE, payload, {
+    retryLimit: 5,
+    retryBackoff: true,
+    retryDelay: 30,
+    // one pending push per device at a time — a second sweep before the
+    // first push completes shouldn't queue a duplicate.
+    singletonKey: `${payload.kennelId}:${payload.deviceId}`,
+    deadLetter: OTA_PUSH_DLQ,
+  });
+}
+
+export async function otaPushHandler(jobs: Job<OtaPushPayload>[]): Promise<void> {
+  const { kennelId, deviceId, deviceType, fw } = jobs[0].data;
+  await sendOta(kennelId, deviceId, deviceType, fw);
+}
+
+/** Called once at boot (src/index.ts) — creates the queues and starts the worker. */
+export async function registerFleetOtaWorker(): Promise<void> {
+  const boss = getQueue();
+  await boss.createQueue(OTA_PUSH_DLQ);
+  await boss.createQueue(OTA_PUSH_QUEUE);
+  await boss.work<OtaPushPayload>(OTA_PUSH_QUEUE, otaPushHandler);
 }
 
 async function liveRolloutsByType(): Promise<
