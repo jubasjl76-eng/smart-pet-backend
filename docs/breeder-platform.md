@@ -17,25 +17,25 @@ resolves `req.kennelId` per request.
 
 ## What each approved idea maps to
 
-| Idea | Where |
-|---|---|
-| Per-dog **Care Plan** | `animals` + `care_plans`; `PUT /animals/:id/care-plan` |
-| **Care inbox / exception queue** | `exceptions` + `src/breeder/exceptions.ts`; `/inbox/*` (ack/snooze/resolve/escalate/assign/reopen), live priority re-rank |
-| **Rules / automation engine** | `rules` + `logic/rules.ts` + `engine/rulesEngine.ts`; `/rules/*`, `POST /rules/install-presets`, `POST /rules/:id/test` |
-| **Notification service** | `notifications` + `notification_prefs` + `engine/notifier.ts`; channels: `log`, `webhook` (real), `sms`/`email`/`push`/`siren` (adapter stubs); quiet hours + escalation chains |
-| **Predictive maintenance** | `device_health_counters` + `logic/maintenance.ts`; counters bumped in `rulesEngine`; `/ops/maintenance*` |
-| **Emergency mode** | `emergency_events` + `kennels.emergency_*`; `/ops/emergency/{trigger,end,status,manifest}` — unlocks pen doors over MQTT, builds an evac manifest |
-| **Weight & growth curves** | `weight_readings` + `logic/growth.ts` (Gompertz expected curve, deviation flags); `/animals/:id/weights`, `/animals/:id/growth`, puppy variants under `/litters` |
-| **Multi-dog identification** | `intake_events.identified_by` + `expected_animal_id` + `mismatch`; `POST /animals/intake` raises a `wrong-pen` exception on mismatch (B2B and B2C) |
-| **Smart scale bowl** | `weight_readings.source='scale'` + `intake_events.grams_consumed`; same endpoints, `deviceId` set |
-| **Consumables warning** | `consumables` + `logic/consumables.ts` (run-out projection); `/ops/consumables*`, engine sweep raises `consumable-low` (no auto-order) |
-| **Offline / power-cut behaviour** | `offline_journal`; `POST /ops/offline-journal` (device reports its dark window on reconnect); engine `detectOffline()` flags stale devices |
-| **Activity & wellness insights** | `logic/wellness.ts`; `GET /animals/:id/wellness` (intake / water / activity / weight trends → plain-language, non-diagnostic) |
-| **Medication log** (staff-administered) | `medications` + `medication_logs` + `logic/medications.ts`; `/medications/*`, `POST /medications/:id/log`, `/:id/compliance`, `sweep-missed` |
-| **Automated play / enrichment** | `enrichment_sessions` + `logic/enrichment.ts`; `POST /ops/enrichment/generate` (round-robin rotation), `/complete` records activity minutes |
-| Litters / whelping (replaces check-in) | `litters` + `puppies`; `/litters/*`, `POST /litters/:id/whelp` |
-| Buyer waitlist (replaces booking) | `buyers`; `/litters/buyers*` |
-| Puppy buyer "update pack" (replaces stay report) | `GET /litters/puppies/:pupId/update-pack` (weight series + gain + health log) |
+| Idea                                             | Where                                                                                                                                                                           |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Per-dog **Care Plan**                            | `animals` + `care_plans`; `PUT /animals/:id/care-plan`                                                                                                                          |
+| **Care inbox / exception queue**                 | `exceptions` + `src/breeder/exceptions.ts`; `/inbox/*` (ack/snooze/resolve/escalate/assign/reopen), live priority re-rank                                                       |
+| **Rules / automation engine**                    | `rules` + `logic/rules.ts` + `engine/rulesEngine.ts`; `/rules/*`, `POST /rules/install-presets`, `POST /rules/:id/test`                                                         |
+| **Notification service**                         | `notifications` + `notification_prefs` + `engine/notifier.ts`; channels: `log`, `webhook` (real), `sms`/`email`/`push`/`siren` (adapter stubs); quiet hours + escalation chains |
+| **Predictive maintenance**                       | `device_health_counters` + `logic/maintenance.ts`; counters bumped in `rulesEngine`; `/ops/maintenance*`                                                                        |
+| **Emergency mode**                               | `emergency_events` + `kennels.emergency_*`; `/ops/emergency/{trigger,end,status,manifest}` — unlocks pen doors over MQTT, builds an evac manifest                               |
+| **Weight & growth curves**                       | `weight_readings` + `logic/growth.ts` (Gompertz expected curve, deviation flags); `/animals/:id/weights`, `/animals/:id/growth`, puppy variants under `/litters`                |
+| **Multi-dog identification**                     | `intake_events.identified_by` + `expected_animal_id` + `mismatch`; `POST /animals/intake` raises a `wrong-pen` exception on mismatch (B2B and B2C)                              |
+| **Smart scale bowl**                             | `weight_readings.source='scale'` + `intake_events.grams_consumed`; same endpoints, `deviceId` set                                                                               |
+| **Consumables warning**                          | `consumables` + `logic/consumables.ts` (run-out projection); `/ops/consumables*`, engine sweep raises `consumable-low` (no auto-order)                                          |
+| **Offline / power-cut behaviour**                | `offline_journal`; `POST /ops/offline-journal` (device reports its dark window on reconnect); engine `detectOffline()` flags stale devices                                      |
+| **Activity & wellness insights**                 | `logic/wellness.ts`; `GET /animals/:id/wellness` (intake / water / activity / weight trends → plain-language, non-diagnostic)                                                   |
+| **Medication log** (staff-administered)          | `medications` + `medication_logs` + `logic/medications.ts`; `/medications/*`, `POST /medications/:id/log`, `/:id/compliance`, `sweep-missed`                                    |
+| **Automated play / enrichment**                  | `enrichment_sessions` + `logic/enrichment.ts`; `POST /ops/enrichment/generate` (round-robin rotation), `/complete` records activity minutes                                     |
+| Litters / whelping (replaces check-in)           | `litters` + `puppies`; `/litters/*`, `POST /litters/:id/whelp`                                                                                                                  |
+| Buyer waitlist (replaces booking)                | `buyers`; `/litters/buyers*`                                                                                                                                                    |
+| Puppy buyer "update pack" (replaces stay report) | `GET /litters/puppies/:pupId/update-pack` (weight series + gain + health log)                                                                                                   |
 
 ---
 
@@ -44,6 +44,7 @@ resolves `req.kennelId` per request.
 All routes require `Authorization: Bearer <jwt>`.
 
 ### Animals & care — `/api/breeder/animals`
+
 ```
 GET    /pens                       list pens + occupancy
 POST   /pens
@@ -60,6 +61,7 @@ GET    /:id/wellness               insight list
 ```
 
 ### Litters, puppies, buyers — `/api/breeder/litters`
+
 ```
 GET    /                           litters + counts
 POST   /                           plan a litter
@@ -75,6 +77,7 @@ GET    /puppies/:pupId/update-pack data half of the weekly buyer pack
 ```
 
 ### Medications — `/api/breeder/medications`
+
 ```
 GET    /                           all meds (+ animal name)
 POST   /                           { animalId, name, dose, route, timesOfDay[], daysOfWeek[] }
@@ -86,6 +89,7 @@ POST   /sweep-missed               raise med-missed exceptions now
 ```
 
 ### Care inbox — `/api/breeder/inbox`
+
 ```
 GET    /?status=active|all|<status>   ranked by live priority; returns counts
 GET    /:id                           exception + its notifications
@@ -94,6 +98,7 @@ POST   /:id/acknowledge | /snooze { minutes } | /resolve { note } | /escalate | 
 ```
 
 ### Rules — `/api/breeder/rules`
+
 ```
 GET    /
 POST   /                           { name, trigger, conditions?, actions, cooldownSeconds? }
@@ -104,6 +109,7 @@ GET    /:id/firings
 ```
 
 ### Ops — `/api/breeder/ops`
+
 ```
 GET/POST/PATCH  /consumables[...]          + POST /consumables/sweep
 GET            /maintenance                per-device counters + predictions
@@ -127,7 +133,13 @@ GET/PUT        /notification-prefs         { channels[], quietHours{start,end,ov
    (`device_status`, `telemetry`, `low_battery`, `feed_acked`, `door_opened`, `jam`),
    `ingestEvent()` updates maintenance counters then evaluates enabled rules and runs actions.
 2. **Tick** (`BREEDER_TICK_MS`, default 60 s): `notifierTick()` (escalations + queue drain),
-   consumable sweep, missed-medication sweep, offline detection.
+   consumable sweep, missed-medication sweep, offline detection, plus the
+   vaccination/update-pack/breeding/retention/fleet sweeps.
+
+Every instance's timer fires the tick locally, but `withLeaderLock()`
+(`src/leaderLock.ts`, Phase 20) gates the actual work behind a Redis
+`SET NX PX` so only one instance runs it per window at prod's ×2+ scale — a
+no-op single-instance lock (always acquires) when `REDIS_URL` is unset.
 
 Runs fine with no broker (mqtt.js retries; the tick is broker-independent).
 
@@ -141,11 +153,17 @@ Runs fine with no broker (mqtt.js retries; the tick is broker-independent).
   "trigger": { "type": "telemetry", "metric": "temperature" },
   "conditions": [{ "field": "value", "op": "gt", "value": 28 }],
   "actions": [
-    { "type": "raise_exception", "kind": "temp-high", "severity": "critical", "title": "…", "suggestedAction": "…" },
+    {
+      "type": "raise_exception",
+      "kind": "temp-high",
+      "severity": "critical",
+      "title": "…",
+      "suggestedAction": "…",
+    },
     { "type": "set_pen_relay", "relay": "fan", "state": "on" },
-    { "type": "notify", "audience": "on-call" }
+    { "type": "notify", "audience": "on-call" },
   ],
-  "cooldownSeconds": 600
+  "cooldownSeconds": 600,
 }
 ```
 
