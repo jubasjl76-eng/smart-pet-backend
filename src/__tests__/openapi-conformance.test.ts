@@ -37,7 +37,11 @@ beforeAll(async () => {
   base = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
 });
 
-interface Op { method: string; path: string; secure: boolean }
+interface Op {
+  method: string;
+  path: string;
+  secure: boolean;
+}
 
 function operations(): Op[] {
   const doc = buildOpenApiDoc() as {
@@ -47,7 +51,11 @@ function operations(): Op[] {
   for (const [path, methods] of Object.entries(doc.paths)) {
     for (const [method, op] of Object.entries(methods)) {
       if (!['get', 'post', 'put', 'patch', 'delete'].includes(method)) continue;
-      ops.push({ method: method.toUpperCase(), path, secure: Array.isArray(op.security) && op.security.length > 0 });
+      ops.push({
+        method: method.toUpperCase(),
+        path,
+        secure: Array.isArray(op.security) && op.security.length > 0,
+      });
     }
   }
   return ops;
@@ -64,20 +72,33 @@ describe('OpenAPI conformance', () => {
   it.each(operations())('$method $path is mounted', async ({ method, path, secure }) => {
     const res = await fetch(`${base}${fill(path)}`, {
       method,
-      headers: method === 'GET' || method === 'DELETE' ? {} : { 'content-type': 'application/json' },
+      headers:
+        method === 'GET' || method === 'DELETE' ? {} : { 'content-type': 'application/json' },
       body: method === 'GET' || method === 'DELETE' ? undefined : '{}',
     });
 
     // Never the app-level catch-all.
     let body: unknown = null;
-    try { body = await res.clone().json(); } catch { /* non-JSON is fine */ }
+    try {
+      body = await res.clone().json();
+    } catch {
+      /* non-JSON is fine */
+    }
     const fellThrough = res.status === 404 && (body as { code?: string })?.code === 'no_route';
-    expect(fellThrough, `${method} ${path} fell through to the catch-all — not mounted`).toBe(false);
+    expect(fellThrough, `${method} ${path} fell through to the catch-all — not mounted`).toBe(
+      false,
+    );
 
     // A documented-secure operation must reject an unauthenticated request.
+    // 429 is also acceptable: this suite hits every /api/auth/* operation
+    // back-to-back from one IP, which legitimately trips that route class's
+    // rate limiter (Phase 20) partway through — still a rejection, just via
+    // a different, earlier-in-the-chain gate than the route's own auth check.
     if (secure) {
-      expect([401, 403], `${method} ${path} is documented secure but returned ${res.status} unauthenticated`)
-        .toContain(res.status);
+      expect(
+        [401, 403, 429],
+        `${method} ${path} is documented secure but returned ${res.status} unauthenticated`,
+      ).toContain(res.status);
     }
   });
 });

@@ -9,25 +9,19 @@ import { query, queryOne } from '../../database/index.js';
 import { ah, bad } from '../http.js';
 import { apiRoute } from '../../openapi/index.js';
 import { raiseException } from '../exceptions.js';
+import { inquiryLimiter } from '../../middleware/rateLimit.js';
 
 const router = Router();
 const T = ['public'];
 
 // The public site is one operation → one kennel.
 async function publicKennel() {
-  return queryOne<Record<string, unknown>>(
-    `SELECT * FROM kennels ORDER BY created_at LIMIT 1`,
-  );
+  return queryOne<Record<string, unknown>>(`SELECT * FROM kennels ORDER BY created_at LIMIT 1`);
 }
 
 // ── status derivation (pure, unit-tested in __tests__/public-api.test.ts) ──
 export type PublicLitterStatus =
-  | 'planned'
-  | 'expecting'
-  | 'born'
-  | 'available'
-  | 'reserved'
-  | 'sold_out';
+  'planned' | 'expecting' | 'born' | 'available' | 'reserved' | 'sold_out';
 
 export function deriveLitterStatus(
   litterStatus: string,
@@ -132,7 +126,9 @@ async function loadLitter(row: Record<string, unknown>) {
 router.get(
   '/kennel',
   apiRoute({
-    method: 'get', path: '/api/public/kennel', tags: T,
+    method: 'get',
+    path: '/api/public/kennel',
+    tags: T,
     summary: 'Public kennel profile.',
     responses: { 200: { description: 'ok' }, 404: { description: 'not found' } },
   }),
@@ -148,11 +144,7 @@ router.get(
       name: k.name,
       tagline: (k.public_tagline as string) ?? '',
       about: (k.public_about as string) ?? '',
-      breeds: breeds.length
-        ? breeds.map((b) => b.breed)
-        : k.breed_focus
-          ? [k.breed_focus]
-          : [],
+      breeds: breeds.length ? breeds.map((b) => b.breed) : k.breed_focus ? [k.breed_focus] : [],
       location: (k.public_location as string) ?? '',
       email: (k.public_email as string) ?? '',
       phone: (k.public_phone as string) ?? undefined,
@@ -164,7 +156,9 @@ router.get(
 router.get(
   '/dogs',
   apiRoute({
-    method: 'get', path: '/api/public/dogs', tags: T,
+    method: 'get',
+    path: '/api/public/dogs',
+    tags: T,
     summary: 'Published breeding / retired dogs.',
     responses: { 200: { description: 'ok' } },
   }),
@@ -184,7 +178,9 @@ router.get(
 router.get(
   '/litters',
   apiRoute({
-    method: 'get', path: '/api/public/litters', tags: T,
+    method: 'get',
+    path: '/api/public/litters',
+    tags: T,
     summary: 'Published litters with puppies.',
     responses: { 200: { description: 'ok' } },
   }),
@@ -202,7 +198,9 @@ router.get(
 router.get(
   '/litters/:id',
   apiRoute({
-    method: 'get', path: '/api/public/litters/{id}', tags: T,
+    method: 'get',
+    path: '/api/public/litters/{id}',
+    tags: T,
     summary: 'One published litter.',
     request: { params: z.object({ id: z.string() }) },
     responses: { 200: { description: 'ok' }, 404: { description: 'not found' } },
@@ -220,24 +218,16 @@ router.get(
 );
 
 // ── inquiries ────────────────────────────────────────────────────────────
-// ponytail: in-memory rate limiter, single process. Move to Redis if the
-// backend ever runs more than one instance.
-const HITS = new Map<string, { n: number; reset: number }>();
-function rateLimited(ip: string): boolean {
-  const now = Date.now();
-  const e = HITS.get(ip);
-  if (!e || now > e.reset) {
-    HITS.set(ip, { n: 1, reset: now + 3_600_000 });
-    return false;
-  }
-  e.n += 1;
-  return e.n > 5;
-}
-
+// Rate-limited on top of the general /api/public limiter — see
+// src/middleware/rateLimit.ts (Phase 20; was an in-memory, single-process
+// limiter here, which would have under-counted at prod's ×2+ instances).
 router.post(
   '/inquiries',
+  inquiryLimiter,
   apiRoute({
-    method: 'post', path: '/api/public/inquiries', tags: T,
+    method: 'post',
+    path: '/api/public/inquiries',
+    tags: T,
     summary: 'Submit a website inquiry (rate-limited per IP).',
     request: {
       body: z.object({
@@ -252,16 +242,6 @@ router.post(
     responses: { 201: { description: 'created' }, 429: { description: 'too many requests' } },
   }),
   ah(async (req, res) => {
-    const fwd = req.headers['x-forwarded-for'];
-    const ip = (
-      (typeof fwd === 'string' ? fwd : '') ||
-      req.socket.remoteAddress ||
-      'unknown'
-    )
-      .split(',')[0]
-      .trim();
-    if (rateLimited(ip)) return bad(res, 'Too many requests, please try later', 429);
-
     const k = await publicKennel();
     if (!k) return bad(res, 'Not found', 404);
 
