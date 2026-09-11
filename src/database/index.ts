@@ -13,17 +13,27 @@ const { Pool } = pg;
 
 const BACKEND_MODE = config.BACKEND_MODE;
 
+// Pool sizing (Phase 20, A12 #1) — unmanaged pg.Pool defaults (max 10, no
+// connection timeout) are fine at ×1 but don't scale intentionally; these
+// are all env-driven so Terraform can tune them per instance (staging/prod
+// set PG_POOL_MAX from max_connections / instance count) without a code
+// change. statement_timeout is a native pg connection param — enforced
+// server-side per connection, no per-query wiring needed.
 const pool = new Pool({
   host: config.PG_HOST,
   port: config.PG_PORT,
   database: pgDatabase(),
   user: config.PG_USER,
   password: config.PG_PASSWORD,
+  max: config.PG_POOL_MAX,
+  idleTimeoutMillis: config.PG_IDLE_TIMEOUT_MS,
+  connectionTimeoutMillis: config.PG_CONNECTION_TIMEOUT_MS,
+  statement_timeout: config.PG_STATEMENT_TIMEOUT_MS,
 });
 
 export async function initializeDatabase(): Promise<void> {
   dlog.info({ mode: BACKEND_MODE }, 'initializing PostgreSQL');
-  
+
   try {
     // Create tables
     await pool.query(`
@@ -145,8 +155,6 @@ export async function initializeDatabase(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_alerts_acknowledged ON alerts(acknowledged);
       CREATE INDEX IF NOT EXISTS idx_sync_queue_synced ON sync_queue(synced);
     `);
-    
-
 
     await pool.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'owner';
