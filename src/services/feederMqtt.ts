@@ -1,8 +1,9 @@
-import mqtt, { MqttClient } from 'mqtt';
+import mqtt, { MqttClient, IClientPublishOptions } from 'mqtt';
 import { EventEmitter } from 'events';
 import { query } from '../database/index.js';
 import { config, mqttUrl } from '../config/index.js';
 import { injectTrace } from '../mqtt/trace.js';
+import { circuitBreaker } from '../circuitBreaker.js';
 import { log } from '../log.js';
 
 const mlog = log.child({ mod: 'feeder-mqtt' });
@@ -49,18 +50,13 @@ export function fleetControlTopic(kennelId: string): string {
   return `kennel/${kennelId}/_control`;
 }
 
-export function publishFleetControl(
+export async function publishFleetControl(
   kennelId: string,
   body: { safeMode: boolean; reason?: string; at?: string; by?: string },
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (!client || !client.connected) {
-      reject(new Error('MQTT broker not connected'));
-      return;
-    }
-    client.publish(fleetControlTopic(kennelId), JSON.stringify(body), { qos: 1, retain: true }, (err) =>
-      err ? reject(err) : resolve(),
-    );
+  await mqttPublishBreaker.fire(fleetControlTopic(kennelId), JSON.stringify(body), {
+    qos: 1,
+    retain: true,
   });
 }
 
@@ -117,7 +113,15 @@ export async function applyStatus(p: StatusPayload): Promise<void> {
        fw_updated_at = CASE WHEN $7 IS NOT NULL AND $7 IS DISTINCT FROM fw_version THEN NOW() ELSE fw_updated_at END,
        updated_at = NOW()
      WHERE device_id = $6`,
-    [online, online ? 'online' : 'offline', food, p.lastFeed ?? null, p.kennelId, p.deviceId, p.fwVersion ?? null]
+    [
+      online,
+      online ? 'online' : 'offline',
+      food,
+      p.lastFeed ?? null,
+      p.kennelId,
+      p.deviceId,
+      p.fwVersion ?? null,
+    ],
   );
   bus.emit(`status:${p.deviceId}`, p);
 }
@@ -152,25 +156,35 @@ export function startFeederMqtt(): void {
   client.on('error', (e) => mlog.error({ err: e }, 'mqtt error'));
 }
 
-export function publishCommand(
-  kennelId: string, deviceId: string, body: object, deviceType = 'feeder',
+// Shared low-level publish, wrapped by one circuit breaker (Phase 20, A12 #5):
+// a broker that's TCP-connected but not actually acking (overloaded, stuck
+// QoS handshake) should trip after repeated timeouts so callers fail fast
+// instead of each hanging on its own publish.
+const mqttPublishBreaker = circuitBreaker(
+  'mqtt-publish',
+  async (topic: string, payload: string, opts: IClientPublishOptions) => {
+    if (!client || !client.connected) throw new Error('MQTT broker not connected');
+    await client.publishAsync(topic, payload, opts);
+  },
+);
+
+export async function publishCommand(
+  kennelId: string,
+  deviceId: string,
+  body: object,
+  deviceType = 'feeder',
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (!client || !client.connected) {
-      reject(new Error('MQTT broker not connected'));
-      return;
-    }
-    const topic = commandTopic(kennelId, deviceId, deviceType);
-    // W3C Trace Context so the device ack links to this command (Phase 16).
-    injectTrace(body as Record<string, unknown>);
-    client.publish(topic, JSON.stringify(body), { qos: 2 }, (err) => {
-      if (err) reject(err);
-      else resolve();
-    });
-  });
+  const topic = commandTopic(kennelId, deviceId, deviceType);
+  // W3C Trace Context so the device ack links to this command (Phase 16).
+  injectTrace(body as Record<string, unknown>);
+  await mqttPublishBreaker.fire(topic, JSON.stringify(body), { qos: 2 });
 }
 
-export function waitForStatusAck(deviceId: string, sinceMs: number, timeoutMs = ACK_TIMEOUT_MS): Promise<StatusPayload> {
+export function waitForStatusAck(
+  deviceId: string,
+  sinceMs: number,
+  timeoutMs = ACK_TIMEOUT_MS,
+): Promise<StatusPayload> {
   return new Promise((resolve, reject) => {
     const key = `status:${deviceId}`;
     const timer = setTimeout(() => {
@@ -193,7 +207,11 @@ export function waitForStatusAck(deviceId: string, sinceMs: number, timeoutMs = 
   });
 }
 
-export async function publishFeedAndWait(kennelId: string, deviceId: string, amount: number): Promise<StatusPayload> {
+export async function publishFeedAndWait(
+  kennelId: string,
+  deviceId: string,
+  amount: number,
+): Promise<StatusPayload> {
   const timestamp = Date.now();
   await publishCommand(kennelId, deviceId, {
     command: 'feed',
@@ -208,7 +226,7 @@ export async function publishFeedAndWait(kennelId: string, deviceId: string, amo
 export async function publishScheduleSet(
   kennelId: string,
   deviceId: string,
-  schedules: { id: string; time: string; amount: number; enabled: boolean }[]
+  schedules: { id: string; time: string; amount: number; enabled: boolean }[],
 ): Promise<void> {
   await publishCommand(kennelId, deviceId, {
     command: 'schedule_set',
@@ -232,7 +250,7 @@ export interface FeederBus {
   waitForStatus(
     deviceId: string,
     predicate: (status: FeederStatusPayload) => boolean,
-    timeoutMs: number
+    timeoutMs: number,
   ): Promise<FeederStatusPayload>;
   publishCommand(topic: string, payload: object): Promise<void>;
 }
@@ -322,7 +340,7 @@ const liveBus: FeederBus = {
         return;
       }
       client.publish(topic, JSON.stringify(payload), { qos: COMMAND_QOS }, (err) =>
-        err ? reject(err) : resolve()
+        err ? reject(err) : resolve(),
       );
     });
   },
