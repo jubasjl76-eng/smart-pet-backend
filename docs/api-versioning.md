@@ -40,9 +40,14 @@ Link: </docs>; rel="describedby"
 anything not yet in `/openapi.json` is still served but not yet documented or
 covered by generated clients.
 
-## Traffic contract (documented now, enforced in Phase 20)
+## Traffic contract
 
 - `429 Too Many Requests` carries `Retry-After` + `RateLimit-Limit` /
   `-Remaining` / `-Reset`. Clients back off with jittered exponential backoff.
-- Mutating endpoints honour an `Idempotency-Key` request header.
+  **Enforced** (Phase 20) — `src/middleware/rateLimit.ts`, Redis-backed
+  (`modules/cache`) so every backend instance shares one counter: strict
+  `/api/auth/*` (5/min/IP), moderate `/api/public/*` (30/min/IP, 100/hr/IP on
+  `POST /inquiries`), generous per-user `/api/breeder/*` (600/min).
+- Mutating endpoints honour an `Idempotency-Key` request header — documented
+  now, enforcement (a Redis-backed store) is a later Phase 20 slice.
 - List endpoints paginate with `?cursor=` + `?limit=` (max 200).

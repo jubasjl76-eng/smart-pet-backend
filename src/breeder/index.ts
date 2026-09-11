@@ -8,6 +8,7 @@
  */
 import type { Express } from 'express';
 import { auth } from '../middleware/auth.js';
+import { publicLimiter, breederLimiter } from '../middleware/rateLimit.js';
 import { withKennel } from './http.js';
 import animals from './routes/animals.js';
 import litters from './routes/litters.js';
@@ -31,10 +32,10 @@ export { startBreederEngine, stopBreederEngine, engineTick } from './engine/inde
 export { initBreederSchema } from './schema.js';
 
 export function mountBreeder(app: Express): void {
-  const guard = [auth, withKennel];
+  const guard = [auth, breederLimiter, withKennel];
 
   // Public marketing site — read-only, NO auth. Serves only published rows.
-  app.use('/api/public', publicRoutes);
+  app.use('/api/public', publicLimiter, publicRoutes);
 
   // Server-Sent Events — live care-inbox + device state for the console.
   app.get('/api/breeder/stream', ...guard, streamHandler);

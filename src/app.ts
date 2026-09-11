@@ -20,6 +20,7 @@ import { auth, ownerOnly, adminOnly } from './middleware/auth.js';
 import { query, queryOne } from './database/index.js';
 import { isFeederMqttConnected } from './services/feederMqtt.js';
 import { redis, redisHealthy } from './redis.js';
+import { authLimiter } from './middleware/rateLimit.js';
 import { mountBreeder } from './breeder/index.js';
 import { getFlags } from './services/flags.js';
 import { buildOpenApiDoc, docsHtml } from './openapi/index.js';
@@ -164,7 +165,7 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
   app.post('/api/iot/events', closed);
   app.use('/api/iot', closed);
 
-  app.use('/api/auth', authRoutes);
+  app.use('/api/auth', authLimiter, authRoutes);
   app.use('/api/setup', setupRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/devices', auth, ownerOnly, deviceRoutes);

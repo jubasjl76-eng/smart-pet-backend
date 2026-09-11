@@ -7,13 +7,13 @@ Serves `smart-pet-website`. The canonical response contract lives in that repo
 
 Adds, idempotently:
 
-| table | columns |
-|---|---|
-| `animals` | `published bool`, `photos jsonb`, `titles text`, `bio text`, `health_tests jsonb` |
-| `litters` | `published bool`, `photos jsonb`, `public_description text` |
-| `puppies` | `published bool`, `photos jsonb`, `color varchar` |
+| table     | columns                                                                                                     |
+| --------- | ----------------------------------------------------------------------------------------------------------- |
+| `animals` | `published bool`, `photos jsonb`, `titles text`, `bio text`, `health_tests jsonb`                           |
+| `litters` | `published bool`, `photos jsonb`, `public_description text`                                                 |
+| `puppies` | `published bool`, `photos jsonb`, `color varchar`                                                           |
 | `kennels` | `public_tagline`, `public_about`, `public_email`, `public_phone`, `public_location`, `public_socials jsonb` |
-| `buyers` | `source varchar` (`'website'` for site inquiries) |
+| `buyers`  | `source varchar` (`'website'` for site inquiries)                                                           |
 
 Partial indexes on `published` for the read path.
 
@@ -24,7 +24,7 @@ Only rows with `published = true`. Single-kennel (the first `kennels` row).
 - `GET /kennel` — public identity + distinct published breeds
 - `GET /dogs` — `animals` where `published AND role IN ('breeding','retired')`; `role` in the response is derived from `sex` (`male→sire`, `female→dam`)
 - `GET /litters` / `GET /litters/:id` — published litters with embedded published puppies + weight series. `status` is derived by `deriveLitterStatus()` (unit-tested)
-- `POST /inquiries` — `{name, email, phone?, message?, puppyId?, litterId?}` → a `buyers` row (`status='waitlist'`, `source='website'`) + a low-priority `website-inquiry` care-inbox item. In-memory rate limit, 5/hour/IP. **Never** changes puppy/litter status.
+- `POST /inquiries` — `{name, email, phone?, message?, puppyId?, litterId?}` → a `buyers` row (`status='waitlist'`, `source='website'`) + a low-priority `website-inquiry` care-inbox item. Redis-backed rate limit (Phase 20), 100/hour/IP, layered on top of the general `/api/public/*` limit (30/min/IP). **Never** changes puppy/litter status.
 
 ## `/api/breeder/website/*` — console controls (behind the breeder guard)
 
