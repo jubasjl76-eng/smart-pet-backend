@@ -10,6 +10,7 @@ import { ah, bad } from '../http.js';
 import { apiRoute } from '../../openapi/index.js';
 import { raiseException } from '../exceptions.js';
 import { inquiryLimiter } from '../../middleware/rateLimit.js';
+import { idempotent } from '../../middleware/idempotency.js';
 
 const router = Router();
 const T = ['public'];
@@ -228,6 +229,7 @@ router.post(
     method: 'post',
     path: '/api/public/inquiries',
     tags: T,
+    idempotent: true,
     summary: 'Submit a website inquiry (rate-limited per IP).',
     request: {
       body: z.object({
@@ -241,6 +243,7 @@ router.post(
     },
     responses: { 201: { description: 'created' }, 429: { description: 'too many requests' } },
   }),
+  idempotent(),
   ah(async (req, res) => {
     const k = await publicKennel();
     if (!k) return bad(res, 'Not found', 404);

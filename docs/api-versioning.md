@@ -48,6 +48,12 @@ covered by generated clients.
   (`modules/cache`) so every backend instance shares one counter: strict
   `/api/auth/*` (5/min/IP), moderate `/api/public/*` (30/min/IP, 100/hr/IP on
   `POST /inquiries`), generous per-user `/api/breeder/*` (600/min).
-- Mutating endpoints honour an `Idempotency-Key` request header — documented
-  now, enforcement (a Redis-backed store) is a later Phase 20 slice.
+- Mutating endpoints honour an `Idempotency-Key` request header. **Enforced**
+  (Phase 20) on the four routes that aren't naturally idempotent —
+  `src/middleware/idempotency.ts`, Redis-backed (24h TTL, in-memory fallback
+  when unset): `POST /api/devices/claim`, `POST /api/devices/{id}/feed`,
+  `POST /api/public/inquiries`, `POST /api/breeder/fleet/devices/{id}/ota`. A
+  repeated key on the same route replays the first response (an
+  `Idempotent-Replayed: true` response header marks a replay) instead of
+  re-running the handler.
 - List endpoints paginate with `?cursor=` + `?limit=` (max 200).

@@ -99,9 +99,7 @@
   "paths": {
     "/api/auth/register": {
       "post": {
-        "tags": [
-          "auth"
-        ],
+        "tags": ["auth"],
         "summary": "Create the first owner account (or a self-serve owner).",
         "requestBody": {
           "required": true,
@@ -122,11 +120,7 @@
                     "minLength": 1
                   }
                 },
-                "required": [
-                  "email",
-                  "password",
-                  "name"
-                ]
+                "required": ["email", "password", "name"]
               }
             }
           }
@@ -163,22 +157,14 @@
                           "type": "string"
                         }
                       },
-                      "required": [
-                        "id",
-                        "email",
-                        "role"
-                      ],
+                      "required": ["id", "email", "role"],
                       "additionalProperties": false
                     },
                     "token": {
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "message",
-                    "user",
-                    "token"
-                  ],
+                  "required": ["message", "user", "token"],
                   "additionalProperties": false
                 }
               }
@@ -195,9 +181,7 @@
     },
     "/api/auth/login": {
       "post": {
-        "tags": [
-          "auth"
-        ],
+        "tags": ["auth"],
         "summary": "Exchange email + password for an access token + a rotating refresh token.",
         "requestBody": {
           "required": true,
@@ -214,10 +198,7 @@
                     "minLength": 1
                   }
                 },
-                "required": [
-                  "email",
-                  "password"
-                ]
+                "required": ["email", "password"]
               }
             }
           }
@@ -254,22 +235,14 @@
                           "type": "string"
                         }
                       },
-                      "required": [
-                        "id",
-                        "email",
-                        "role"
-                      ],
+                      "required": ["id", "email", "role"],
                       "additionalProperties": false
                     },
                     "token": {
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "message",
-                    "user",
-                    "token"
-                  ],
+                  "required": ["message", "user", "token"],
                   "additionalProperties": false
                 }
               }
@@ -286,9 +259,7 @@
     },
     "/api/auth/refresh": {
       "post": {
-        "tags": [
-          "auth"
-        ],
+        "tags": ["auth"],
         "summary": "Rotate a refresh token; returns a new access + refresh pair.",
         "requestBody": {
           "required": true,
@@ -302,9 +273,7 @@
                     "minLength": 1
                   }
                 },
-                "required": [
-                  "refreshToken"
-                ]
+                "required": ["refreshToken"]
               }
             }
           }
@@ -341,22 +310,14 @@
                           "type": "string"
                         }
                       },
-                      "required": [
-                        "id",
-                        "email",
-                        "role"
-                      ],
+                      "required": ["id", "email", "role"],
                       "additionalProperties": false
                     },
                     "token": {
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "message",
-                    "user",
-                    "token"
-                  ],
+                  "required": ["message", "user", "token"],
                   "additionalProperties": false
                 }
               }
@@ -373,9 +334,7 @@
     },
     "/api/auth/logout": {
       "post": {
-        "tags": [
-          "auth"
-        ],
+        "tags": ["auth"],
         "summary": "Revoke the given refresh token (or all of the caller’s).",
         "requestBody": {
           "required": true,
@@ -407,9 +366,7 @@
     },
     "/api/auth/accept-invite": {
       "post": {
-        "tags": [
-          "auth"
-        ],
+        "tags": ["auth"],
         "summary": "Turn a staff/owner invite token into an account.",
         "requestBody": {
           "required": true,
@@ -431,10 +388,7 @@
                     "minLength": 6
                   }
                 },
-                "required": [
-                  "token",
-                  "password"
-                ]
+                "required": ["token", "password"]
               }
             }
           }
@@ -471,22 +425,14 @@
                           "type": "string"
                         }
                       },
-                      "required": [
-                        "id",
-                        "email",
-                        "role"
-                      ],
+                      "required": ["id", "email", "role"],
                       "additionalProperties": false
                     },
                     "token": {
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "message",
-                    "user",
-                    "token"
-                  ],
+                  "required": ["message", "user", "token"],
                   "additionalProperties": false
                 }
               }
@@ -503,9 +449,7 @@
     },
     "/api/auth/me": {
       "get": {
-        "tags": [
-          "auth"
-        ],
+        "tags": ["auth"],
         "summary": "The current user.",
         "security": [
           {
@@ -538,11 +482,7 @@
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "id",
-                    "email",
-                    "role"
-                  ],
+                  "required": ["id", "email", "role"],
                   "additionalProperties": false
                 }
               }
@@ -559,9 +499,7 @@
     },
     "/api/auth/profile": {
       "put": {
-        "tags": [
-          "auth"
-        ],
+        "tags": ["auth"],
         "summary": "Update the current user’s name / email.",
         "security": [
           {
@@ -613,11 +551,7 @@
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "id",
-                    "email",
-                    "role"
-                  ],
+                  "required": ["id", "email", "role"],
                   "additionalProperties": false
                 }
               }
@@ -631,9 +565,7 @@
     },
     "/api/auth/password": {
       "put": {
-        "tags": [
-          "auth"
-        ],
+        "tags": ["auth"],
         "summary": "Change the current user’s password.",
         "security": [
           {
@@ -656,10 +588,7 @@
                     "minLength": 6
                   }
                 },
-                "required": [
-                  "currentPassword",
-                  "newPassword"
-                ]
+                "required": ["currentPassword", "newPassword"]
               }
             }
           }
@@ -679,9 +608,7 @@
     },
     "/api/breeder/rules": {
       "get": {
-        "tags": [
-          "breeder: rules"
-        ],
+        "tags": ["breeder: rules"],
         "summary": "List automation rules for the kennel.",
         "security": [
           {
@@ -704,9 +631,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "rules"
-                  ],
+                  "required": ["rules"],
                   "additionalProperties": false
                 }
               }
@@ -718,9 +643,7 @@
         }
       },
       "post": {
-        "tags": [
-          "breeder: rules"
-        ],
+        "tags": ["breeder: rules"],
         "summary": "Create a rule.",
         "security": [
           {
@@ -760,11 +683,7 @@
                     "maximum": 9007199254740991
                   }
                 },
-                "required": [
-                  "name",
-                  "trigger",
-                  "actions"
-                ]
+                "required": ["name", "trigger", "actions"]
               }
             }
           }
@@ -781,9 +700,7 @@
     },
     "/api/breeder/rules/{id}": {
       "patch": {
-        "tags": [
-          "breeder: rules"
-        ],
+        "tags": ["breeder: rules"],
         "summary": "Update a rule (partial).",
         "security": [
           {
@@ -850,9 +767,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "breeder: rules"
-        ],
+        "tags": ["breeder: rules"],
         "summary": "Delete a rule.",
         "security": [
           {
@@ -881,9 +796,7 @@
     },
     "/api/breeder/rules/install-presets": {
       "post": {
-        "tags": [
-          "breeder: rules"
-        ],
+        "tags": ["breeder: rules"],
         "summary": "Install the parameterised preset rules (skips ones already present by name).",
         "security": [
           {
@@ -902,9 +815,7 @@
                       "type": "number"
                     }
                   },
-                  "required": [
-                    "installed"
-                  ],
+                  "required": ["installed"],
                   "additionalProperties": false
                 }
               }
@@ -918,9 +829,7 @@
     },
     "/api/breeder/rules/{id}/test": {
       "post": {
-        "tags": [
-          "breeder: rules"
-        ],
+        "tags": ["breeder: rules"],
         "summary": "Dry-run a rule against a sample event without firing its actions.",
         "security": [
           {
@@ -986,9 +895,7 @@
     },
     "/api/breeder/rules/{id}/firings": {
       "get": {
-        "tags": [
-          "breeder: rules"
-        ],
+        "tags": ["breeder: rules"],
         "summary": "Recent firings for a rule (last 100).",
         "security": [
           {
@@ -1017,9 +924,7 @@
     },
     "/api/breeder/inbox": {
       "get": {
-        "tags": [
-          "breeder: care inbox"
-        ],
+        "tags": ["breeder: care inbox"],
         "summary": "Care inbox — actionable items by default, ranked by live priority.",
         "security": [
           {
@@ -1033,14 +938,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "enum": [
-                "active",
-                "all",
-                "open",
-                "escalated",
-                "snoozed",
-                "resolved"
-              ]
+              "enum": ["active", "all", "open", "escalated", "snoozed", "resolved"]
             }
           }
         ],
@@ -1066,10 +964,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "items",
-                    "counts"
-                  ],
+                  "required": ["items", "counts"],
                   "additionalProperties": false
                 }
               }
@@ -1081,9 +976,7 @@
         }
       },
       "post": {
-        "tags": [
-          "breeder: care inbox"
-        ],
+        "tags": ["breeder: care inbox"],
         "summary": "Manually raise an exception.",
         "security": [
           {
@@ -1107,11 +1000,7 @@
                   },
                   "severity": {
                     "type": "string",
-                    "enum": [
-                      "info",
-                      "warning",
-                      "critical"
-                    ]
+                    "enum": ["info", "warning", "critical"]
                   },
                   "detail": {
                     "type": "string"
@@ -1137,10 +1026,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "kind",
-                  "title"
-                ]
+                "required": ["kind", "title"]
               }
             }
           }
@@ -1160,9 +1046,7 @@
     },
     "/api/breeder/inbox/{id}": {
       "get": {
-        "tags": [
-          "breeder: care inbox"
-        ],
+        "tags": ["breeder: care inbox"],
         "summary": "One exception + its notification history.",
         "security": [
           {
@@ -1194,9 +1078,7 @@
     },
     "/api/breeder/inbox/{id}/acknowledge": {
       "post": {
-        "tags": [
-          "breeder: care inbox"
-        ],
+        "tags": ["breeder: care inbox"],
         "summary": "Transition an exception: acknowledge.",
         "security": [
           {
@@ -1252,9 +1134,7 @@
     },
     "/api/breeder/inbox/{id}/snooze": {
       "post": {
-        "tags": [
-          "breeder: care inbox"
-        ],
+        "tags": ["breeder: care inbox"],
         "summary": "Transition an exception: snooze.",
         "security": [
           {
@@ -1310,9 +1190,7 @@
     },
     "/api/breeder/inbox/{id}/resolve": {
       "post": {
-        "tags": [
-          "breeder: care inbox"
-        ],
+        "tags": ["breeder: care inbox"],
         "summary": "Transition an exception: resolve.",
         "security": [
           {
@@ -1368,9 +1246,7 @@
     },
     "/api/breeder/inbox/{id}/escalate": {
       "post": {
-        "tags": [
-          "breeder: care inbox"
-        ],
+        "tags": ["breeder: care inbox"],
         "summary": "Transition an exception: escalate.",
         "security": [
           {
@@ -1426,9 +1302,7 @@
     },
     "/api/breeder/inbox/{id}/assign": {
       "post": {
-        "tags": [
-          "breeder: care inbox"
-        ],
+        "tags": ["breeder: care inbox"],
         "summary": "Transition an exception: assign.",
         "security": [
           {
@@ -1484,9 +1358,7 @@
     },
     "/api/breeder/inbox/{id}/reopen": {
       "post": {
-        "tags": [
-          "breeder: care inbox"
-        ],
+        "tags": ["breeder: care inbox"],
         "summary": "Transition an exception: reopen.",
         "security": [
           {
@@ -1542,9 +1414,7 @@
     },
     "/api/breeder/medications": {
       "get": {
-        "tags": [
-          "breeder: medications"
-        ],
+        "tags": ["breeder: medications"],
         "summary": "All medications for the kennel (active first).",
         "security": [
           {
@@ -1567,9 +1437,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "medications"
-                  ],
+                  "required": ["medications"],
                   "additionalProperties": false
                 }
               }
@@ -1581,9 +1449,7 @@
         }
       },
       "post": {
-        "tags": [
-          "breeder: medications"
-        ],
+        "tags": ["breeder: medications"],
         "summary": "Add a medication + schedule for an animal.",
         "security": [
           {
@@ -1635,10 +1501,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "animalId",
-                  "name"
-                ]
+                "required": ["animalId", "name"]
               }
             }
           }
@@ -1655,9 +1518,7 @@
     },
     "/api/breeder/medications/{id}": {
       "patch": {
-        "tags": [
-          "breeder: medications"
-        ],
+        "tags": ["breeder: medications"],
         "summary": "Update a medication (partial).",
         "security": [
           {
@@ -1689,9 +1550,7 @@
     },
     "/api/breeder/medications/due": {
       "get": {
-        "tags": [
-          "breeder: medications"
-        ],
+        "tags": ["breeder: medications"],
         "summary": "Doses due in the next `hours` (default 24, max 72), for the worklist.",
         "security": [
           {
@@ -1726,9 +1585,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "due"
-                  ],
+                  "required": ["due"],
                   "additionalProperties": false
                 }
               }
@@ -1742,9 +1599,7 @@
     },
     "/api/breeder/medications/{id}/log": {
       "post": {
-        "tags": [
-          "breeder: medications"
-        ],
+        "tags": ["breeder: medications"],
         "summary": "Register a dose as given / skipped / refused.",
         "security": [
           {
@@ -1770,11 +1625,7 @@
                 "properties": {
                   "outcome": {
                     "type": "string",
-                    "enum": [
-                      "given",
-                      "skipped",
-                      "refused"
-                    ]
+                    "enum": ["given", "skipped", "refused"]
                   },
                   "scheduledFor": {
                     "type": "string"
@@ -1805,9 +1656,7 @@
     },
     "/api/breeder/medications/{id}/compliance": {
       "get": {
-        "tags": [
-          "breeder: medications"
-        ],
+        "tags": ["breeder: medications"],
         "summary": "30-day compliance report + recent missed doses.",
         "security": [
           {
@@ -1839,9 +1688,7 @@
     },
     "/api/breeder/medications/sweep-missed": {
       "post": {
-        "tags": [
-          "breeder: medications"
-        ],
+        "tags": ["breeder: medications"],
         "summary": "Raise a care-inbox exception per medication with an overdue, unlogged dose.",
         "security": [
           {
@@ -1860,9 +1707,7 @@
                       "type": "number"
                     }
                   },
-                  "required": [
-                    "raised"
-                  ],
+                  "required": ["raised"],
                   "additionalProperties": false
                 }
               }
@@ -1876,9 +1721,7 @@
     },
     "/api/breeder/geo/zones": {
       "get": {
-        "tags": [
-          "breeder: geofencing"
-        ],
+        "tags": ["breeder: geofencing"],
         "summary": "Safe zones for the kennel.",
         "security": [
           {
@@ -1901,9 +1744,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "zones"
-                  ],
+                  "required": ["zones"],
                   "additionalProperties": false
                 }
               }
@@ -1915,9 +1756,7 @@
         }
       },
       "post": {
-        "tags": [
-          "breeder: geofencing"
-        ],
+        "tags": ["breeder: geofencing"],
         "summary": "Create a safe zone (boundary or exclusion circle).",
         "security": [
           {
@@ -1943,10 +1782,7 @@
                   },
                   "kind": {
                     "type": "string",
-                    "enum": [
-                      "boundary",
-                      "exclusion"
-                    ]
+                    "enum": ["boundary", "exclusion"]
                   },
                   "radiusM": {
                     "type": "number"
@@ -1956,11 +1792,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "name",
-                  "centerLat",
-                  "centerLng"
-                ]
+                "required": ["name", "centerLat", "centerLng"]
               }
             }
           }
@@ -1977,9 +1809,7 @@
     },
     "/api/breeder/geo/zones/{id}": {
       "patch": {
-        "tags": [
-          "breeder: geofencing"
-        ],
+        "tags": ["breeder: geofencing"],
         "summary": "Update a safe zone (partial).",
         "security": [
           {
@@ -2008,10 +1838,7 @@
                   },
                   "kind": {
                     "type": "string",
-                    "enum": [
-                      "boundary",
-                      "exclusion"
-                    ]
+                    "enum": ["boundary", "exclusion"]
                   },
                   "radiusM": {
                     "type": "number"
@@ -2043,9 +1870,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "breeder: geofencing"
-        ],
+        "tags": ["breeder: geofencing"],
         "summary": "Delete a safe zone.",
         "security": [
           {
@@ -2074,9 +1899,7 @@
     },
     "/api/breeder/geo/positions": {
       "post": {
-        "tags": [
-          "breeder: geofencing"
-        ],
+        "tags": ["breeder: geofencing"],
         "summary": "Ingest a GPS fix (enter/exit detection + escape alerts).",
         "security": [
           {
@@ -2106,10 +1929,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "lat",
-                  "lng"
-                ]
+                "required": ["lat", "lng"]
               }
             }
           }
@@ -2129,9 +1949,7 @@
     },
     "/api/breeder/geo/positions/latest": {
       "get": {
-        "tags": [
-          "breeder: geofencing"
-        ],
+        "tags": ["breeder: geofencing"],
         "summary": "Latest fix + inside-zone list per collared animal.",
         "security": [
           {
@@ -2154,9 +1972,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "positions"
-                  ],
+                  "required": ["positions"],
                   "additionalProperties": false
                 }
               }
@@ -2170,9 +1986,7 @@
     },
     "/api/breeder/fleet/firmware": {
       "post": {
-        "tags": [
-          "breeder: fleet"
-        ],
+        "tags": ["breeder: fleet"],
         "summary": "Register a firmware build.",
         "security": [
           {
@@ -2232,12 +2046,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "deviceType",
-                  "version",
-                  "url",
-                  "sha256"
-                ]
+                "required": ["deviceType", "version", "url", "sha256"]
               }
             }
           }
@@ -2255,9 +2064,7 @@
         }
       },
       "get": {
-        "tags": [
-          "breeder: fleet"
-        ],
+        "tags": ["breeder: fleet"],
         "summary": "List firmware builds (optionally by deviceType).",
         "security": [
           {
@@ -2290,9 +2097,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "firmware"
-                  ],
+                  "required": ["firmware"],
                   "additionalProperties": false
                 }
               }
@@ -2306,9 +2111,7 @@
     },
     "/api/breeder/fleet/rollouts": {
       "get": {
-        "tags": [
-          "breeder: fleet"
-        ],
+        "tags": ["breeder: fleet"],
         "summary": "Recent firmware rollouts (live first).",
         "security": [
           {
@@ -2331,9 +2134,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "rollouts"
-                  ],
+                  "required": ["rollouts"],
                   "additionalProperties": false
                 }
               }
@@ -2345,9 +2146,7 @@
         }
       },
       "post": {
-        "tags": [
-          "breeder: fleet"
-        ],
+        "tags": ["breeder: fleet"],
         "summary": "Start (or replace) the live rollout for a device type.",
         "security": [
           {
@@ -2369,9 +2168,7 @@
                     "type": "number"
                   }
                 },
-                "required": [
-                  "firmwareId"
-                ]
+                "required": ["firmwareId"]
               }
             }
           }
@@ -2391,9 +2188,7 @@
     },
     "/api/breeder/fleet/rollouts/{id}": {
       "patch": {
-        "tags": [
-          "breeder: fleet"
-        ],
+        "tags": ["breeder: fleet"],
         "summary": "Advance / pause / finish a rollout (percent only grows).",
         "security": [
           {
@@ -2419,11 +2214,7 @@
                 "properties": {
                   "state": {
                     "type": "string",
-                    "enum": [
-                      "rolling",
-                      "paused",
-                      "done"
-                    ]
+                    "enum": ["rolling", "paused", "done"]
                   },
                   "percent": {
                     "type": "number"
@@ -2448,9 +2239,7 @@
     },
     "/api/breeder/fleet/devices": {
       "get": {
-        "tags": [
-          "breeder: fleet"
-        ],
+        "tags": ["breeder: fleet"],
         "summary": "Fleet view — reported vs target firmware per device.",
         "security": [
           {
@@ -2473,9 +2262,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "devices"
-                  ],
+                  "required": ["devices"],
                   "additionalProperties": false
                 }
               }
@@ -2489,9 +2276,7 @@
     },
     "/api/breeder/fleet/health": {
       "get": {
-        "tags": [
-          "breeder: fleet"
-        ],
+        "tags": ["breeder: fleet"],
         "summary": "Fleet observability — version histogram, rollout progress, crashes by version.",
         "security": [
           {
@@ -2524,12 +2309,7 @@
                             "type": "number"
                           }
                         },
-                        "required": [
-                          "fw",
-                          "deviceType",
-                          "total",
-                          "online"
-                        ],
+                        "required": ["fw", "deviceType", "total", "online"],
                         "additionalProperties": false
                       }
                     },
@@ -2599,29 +2379,16 @@
                                 "type": "number"
                               }
                             },
-                            "required": [
-                              "fw",
-                              "crashes",
-                              "devices"
-                            ],
+                            "required": ["fw", "crashes", "devices"],
                             "additionalProperties": false
                           }
                         }
                       },
-                      "required": [
-                        "windowDays",
-                        "totalDevices",
-                        "crashFreeDevices",
-                        "byVersion"
-                      ],
+                      "required": ["windowDays", "totalDevices", "crashFreeDevices", "byVersion"],
                       "additionalProperties": false
                     }
                   },
-                  "required": [
-                    "versions",
-                    "rollouts",
-                    "crashes"
-                  ],
+                  "required": ["versions", "rollouts", "crashes"],
                   "additionalProperties": false
                 }
               }
@@ -2635,9 +2402,7 @@
     },
     "/api/breeder/fleet/devices/{deviceId}/ota": {
       "post": {
-        "tags": [
-          "breeder: fleet"
-        ],
+        "tags": ["breeder: fleet"],
         "summary": "Push the OTA offer to one device now.",
         "security": [
           {
@@ -2652,6 +2417,9 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
           }
         ],
         "requestBody": {
@@ -2687,9 +2455,7 @@
     },
     "/api/breeder/fleet/sweep": {
       "post": {
-        "tags": [
-          "breeder: fleet"
-        ],
+        "tags": ["breeder: fleet"],
         "summary": "Nudge in-bucket online devices onto the rollout target.",
         "security": [
           {
@@ -2708,9 +2474,7 @@
                       "type": "number"
                     }
                   },
-                  "required": [
-                    "pushed"
-                  ],
+                  "required": ["pushed"],
                   "additionalProperties": false
                 }
               }
@@ -2724,9 +2488,7 @@
     },
     "/api/breeder/fleet/control": {
       "get": {
-        "tags": [
-          "breeder: fleet"
-        ],
+        "tags": ["breeder: fleet"],
         "summary": "Current fleet kill-switch state for the kennel.",
         "security": [
           {
@@ -2753,11 +2515,7 @@
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "safeMode",
-                    "reason",
-                    "updatedAt"
-                  ],
+                  "required": ["safeMode", "reason", "updatedAt"],
                   "additionalProperties": false
                 }
               }
@@ -2771,9 +2529,7 @@
     },
     "/api/breeder/fleet/halt": {
       "post": {
-        "tags": [
-          "breeder: fleet"
-        ],
+        "tags": ["breeder: fleet"],
         "summary": "Halt the whole kennel: devices stop actuating, keep reporting.",
         "security": [
           {
@@ -2811,10 +2567,7 @@
                       "type": "boolean"
                     }
                   },
-                  "required": [
-                    "safeMode",
-                    "brokerPublished"
-                  ],
+                  "required": ["safeMode", "brokerPublished"],
                   "additionalProperties": false
                 }
               }
@@ -2828,9 +2581,7 @@
     },
     "/api/breeder/fleet/resume": {
       "post": {
-        "tags": [
-          "breeder: fleet"
-        ],
+        "tags": ["breeder: fleet"],
         "summary": "Lift the kennel halt — devices resume normal operation.",
         "security": [
           {
@@ -2852,10 +2603,7 @@
                       "type": "boolean"
                     }
                   },
-                  "required": [
-                    "safeMode",
-                    "brokerPublished"
-                  ],
+                  "required": ["safeMode", "brokerPublished"],
                   "additionalProperties": false
                 }
               }
@@ -2869,9 +2617,7 @@
     },
     "/api/breeder/documents": {
       "post": {
-        "tags": [
-          "breeder: documents"
-        ],
+        "tags": ["breeder: documents"],
         "summary": "Upload a document (multipart form-data, field \"file\").",
         "security": [
           {
@@ -2891,9 +2637,7 @@
         }
       },
       "get": {
-        "tags": [
-          "breeder: documents"
-        ],
+        "tags": ["breeder: documents"],
         "summary": "List documents (filter by subjectType / subjectId / kind).",
         "security": [
           {
@@ -2942,9 +2686,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "documents"
-                  ],
+                  "required": ["documents"],
                   "additionalProperties": false
                 }
               }
@@ -2958,9 +2700,7 @@
     },
     "/api/breeder/documents/{id}/download": {
       "get": {
-        "tags": [
-          "breeder: documents"
-        ],
+        "tags": ["breeder: documents"],
         "summary": "Download a document (binary or generated markdown).",
         "security": [
           {
@@ -2995,9 +2735,7 @@
     },
     "/api/breeder/documents/templates": {
       "get": {
-        "tags": [
-          "breeder: documents"
-        ],
+        "tags": ["breeder: documents"],
         "summary": "Document templates (defaults + this kennel’s overrides).",
         "security": [
           {
@@ -3020,9 +2758,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "templates"
-                  ],
+                  "required": ["templates"],
                   "additionalProperties": false
                 }
               }
@@ -3036,9 +2772,7 @@
     },
     "/api/breeder/documents/templates/{slug}": {
       "put": {
-        "tags": [
-          "breeder: documents"
-        ],
+        "tags": ["breeder: documents"],
         "summary": "Upsert this kennel’s override for one template slug.",
         "security": [
           {
@@ -3070,9 +2804,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "body"
-                ]
+                "required": ["body"]
               }
             }
           }
@@ -3092,9 +2824,7 @@
     },
     "/api/breeder/documents/generate": {
       "post": {
-        "tags": [
-          "breeder: documents"
-        ],
+        "tags": ["breeder: documents"],
         "summary": "Render a template into a stored document row.",
         "security": [
           {
@@ -3134,11 +2864,7 @@
                     }
                   }
                 },
-                "required": [
-                  "template",
-                  "subjectType",
-                  "subjectId"
-                ]
+                "required": ["template", "subjectType", "subjectId"]
               }
             }
           }
@@ -3158,9 +2884,7 @@
     },
     "/api/breeder/documents/{id}": {
       "delete": {
-        "tags": [
-          "breeder: documents"
-        ],
+        "tags": ["breeder: documents"],
         "summary": "Delete a document (and its stored file).",
         "security": [
           {
@@ -3189,9 +2913,7 @@
     },
     "/api/breeder/privacy/access-log": {
       "get": {
-        "tags": [
-          "breeder: privacy"
-        ],
+        "tags": ["breeder: privacy"],
         "summary": "Read the access log (filterable).",
         "security": [
           {
@@ -3274,9 +2996,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "entries"
-                  ],
+                  "required": ["entries"],
                   "additionalProperties": false
                 }
               }
@@ -3290,9 +3010,7 @@
     },
     "/api/breeder/privacy/retention": {
       "get": {
-        "tags": [
-          "breeder: privacy"
-        ],
+        "tags": ["breeder: privacy"],
         "summary": "Retention windows per data class.",
         "security": [
           {
@@ -3315,9 +3033,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "classes"
-                  ],
+                  "required": ["classes"],
                   "additionalProperties": false
                 }
               }
@@ -3331,9 +3047,7 @@
     },
     "/api/breeder/privacy/retention/{class}": {
       "put": {
-        "tags": [
-          "breeder: privacy"
-        ],
+        "tags": ["breeder: privacy"],
         "summary": "Set (or clear, keepDays < 1) a retention window.",
         "security": [
           {
@@ -3361,9 +3075,7 @@
                     "type": "number"
                   }
                 },
-                "required": [
-                  "keepDays"
-                ]
+                "required": ["keepDays"]
               }
             }
           }
@@ -3383,9 +3095,7 @@
     },
     "/api/breeder/privacy/export": {
       "get": {
-        "tags": [
-          "breeder: privacy"
-        ],
+        "tags": ["breeder: privacy"],
         "summary": "GDPR data export for a buyer / animal / litter.",
         "security": [
           {
@@ -3399,11 +3109,7 @@
             "required": true,
             "schema": {
               "type": "string",
-              "enum": [
-                "buyer",
-                "animal",
-                "litter"
-              ]
+              "enum": ["buyer", "animal", "litter"]
             }
           },
           {
@@ -3431,9 +3137,7 @@
     },
     "/api/breeder/privacy/delete": {
       "post": {
-        "tags": [
-          "breeder: privacy"
-        ],
+        "tags": ["breeder: privacy"],
         "summary": "GDPR erasure for a buyer / animal / litter (needs { confirm: true }).",
         "security": [
           {
@@ -3449,11 +3153,7 @@
                 "properties": {
                   "subjectType": {
                     "type": "string",
-                    "enum": [
-                      "buyer",
-                      "animal",
-                      "litter"
-                    ]
+                    "enum": ["buyer", "animal", "litter"]
                   },
                   "id": {
                     "type": "string",
@@ -3463,10 +3163,7 @@
                     "type": "boolean"
                   }
                 },
-                "required": [
-                  "subjectType",
-                  "id"
-                ]
+                "required": ["subjectType", "id"]
               }
             }
           }
@@ -3489,9 +3186,7 @@
     },
     "/api/breeder/privacy/retention/run": {
       "post": {
-        "tags": [
-          "breeder: privacy"
-        ],
+        "tags": ["breeder: privacy"],
         "summary": "Run the retention sweep now.",
         "security": [
           {
@@ -3513,10 +3208,7 @@
                       "type": "number"
                     }
                   },
-                  "required": [
-                    "accessLog",
-                    "documents"
-                  ],
+                  "required": ["accessLog", "documents"],
                   "additionalProperties": false
                 }
               }
@@ -3530,9 +3222,7 @@
     },
     "/api/breeder/vaccinations/protocols": {
       "get": {
-        "tags": [
-          "breeder: vaccinations"
-        ],
+        "tags": ["breeder: vaccinations"],
         "summary": "Vaccination protocol templates.",
         "security": [
           {
@@ -3555,9 +3245,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "protocols"
-                  ],
+                  "required": ["protocols"],
                   "additionalProperties": false
                 }
               }
@@ -3569,9 +3257,7 @@
         }
       },
       "post": {
-        "tags": [
-          "breeder: vaccinations"
-        ],
+        "tags": ["breeder: vaccinations"],
         "summary": "Create a vaccination protocol.",
         "security": [
           {
@@ -3603,10 +3289,7 @@
                     "type": "boolean"
                   }
                 },
-                "required": [
-                  "name",
-                  "doses"
-                ]
+                "required": ["name", "doses"]
               }
             }
           }
@@ -3623,9 +3306,7 @@
     },
     "/api/breeder/vaccinations/protocols/{id}": {
       "patch": {
-        "tags": [
-          "breeder: vaccinations"
-        ],
+        "tags": ["breeder: vaccinations"],
         "summary": "Update a vaccination protocol (partial).",
         "security": [
           {
@@ -3683,9 +3364,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "breeder: vaccinations"
-        ],
+        "tags": ["breeder: vaccinations"],
         "summary": "Delete a vaccination protocol.",
         "security": [
           {
@@ -3714,9 +3393,7 @@
     },
     "/api/breeder/vaccinations/apply": {
       "post": {
-        "tags": [
-          "breeder: vaccinations"
-        ],
+        "tags": ["breeder: vaccinations"],
         "summary": "Apply a protocol to an animal / puppy / whole litter.",
         "security": [
           {
@@ -3769,9 +3446,7 @@
     },
     "/api/breeder/vaccinations": {
       "get": {
-        "tags": [
-          "breeder: vaccinations"
-        ],
+        "tags": ["breeder: vaccinations"],
         "summary": "Vaccination records (filter by animalId / puppyId / status).",
         "security": [
           {
@@ -3820,9 +3495,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "records"
-                  ],
+                  "required": ["records"],
                   "additionalProperties": false
                 }
               }
@@ -3836,9 +3509,7 @@
     },
     "/api/breeder/vaccinations/{id}": {
       "patch": {
-        "tags": [
-          "breeder: vaccinations"
-        ],
+        "tags": ["breeder: vaccinations"],
         "summary": "Update a vaccination record (partial).",
         "security": [
           {
@@ -3870,9 +3541,7 @@
     },
     "/api/breeder/vaccinations/sweep": {
       "post": {
-        "tags": [
-          "breeder: vaccinations"
-        ],
+        "tags": ["breeder: vaccinations"],
         "summary": "Raise a care-inbox exception per subject with overdue vaccinations.",
         "security": [
           {
@@ -3891,9 +3560,7 @@
                       "type": "number"
                     }
                   },
-                  "required": [
-                    "raised"
-                  ],
+                  "required": ["raised"],
                   "additionalProperties": false
                 }
               }
@@ -3907,9 +3574,7 @@
     },
     "/api/breeder/breeding/heat-cycles": {
       "get": {
-        "tags": [
-          "breeder: breeding"
-        ],
+        "tags": ["breeder: breeding"],
         "summary": "Heat cycles (filter by animalId).",
         "security": [
           {
@@ -3942,9 +3607,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "heatCycles"
-                  ],
+                  "required": ["heatCycles"],
                   "additionalProperties": false
                 }
               }
@@ -3956,9 +3619,7 @@
         }
       },
       "post": {
-        "tags": [
-          "breeder: breeding"
-        ],
+        "tags": ["breeder: breeding"],
         "summary": "Record a heat cycle.",
         "security": [
           {
@@ -3989,10 +3650,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "animalId",
-                  "startedOn"
-                ]
+                "required": ["animalId", "startedOn"]
               }
             }
           }
@@ -4009,9 +3667,7 @@
     },
     "/api/breeder/breeding/heat-cycles/{id}": {
       "patch": {
-        "tags": [
-          "breeder: breeding"
-        ],
+        "tags": ["breeder: breeding"],
         "summary": "Update a heat cycle (partial).",
         "security": [
           {
@@ -4041,9 +3697,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "breeder: breeding"
-        ],
+        "tags": ["breeder: breeding"],
         "summary": "Delete a heat cycle.",
         "security": [
           {
@@ -4072,9 +3726,7 @@
     },
     "/api/breeder/breeding/litters/{id}/mated": {
       "post": {
-        "tags": [
-          "breeder: breeding"
-        ],
+        "tags": ["breeder: breeding"],
         "summary": "Record mating detail on a litter (planned → expecting).",
         "security": [
           {
@@ -4114,9 +3766,7 @@
                     }
                   }
                 },
-                "required": [
-                  "matedOn"
-                ]
+                "required": ["matedOn"]
               }
             }
           }
@@ -4136,9 +3786,7 @@
     },
     "/api/breeder/breeding/litters/{id}/progesterone": {
       "post": {
-        "tags": [
-          "breeder: breeding"
-        ],
+        "tags": ["breeder: breeding"],
         "summary": "Append a progesterone reading + get guidance.",
         "security": [
           {
@@ -4170,10 +3818,7 @@
                     "type": "number"
                   }
                 },
-                "required": [
-                  "on",
-                  "ngml"
-                ]
+                "required": ["on", "ngml"]
               }
             }
           }
@@ -4193,9 +3838,7 @@
     },
     "/api/breeder/breeding/calendar": {
       "get": {
-        "tags": [
-          "breeder: breeding"
-        ],
+        "tags": ["breeder: breeding"],
         "summary": "Assembled breeding calendar — heats, litters, go-home dates.",
         "security": [
           {
@@ -4232,11 +3875,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "heats",
-                    "litters",
-                    "goHome"
-                  ],
+                  "required": ["heats", "litters", "goHome"],
                   "additionalProperties": false
                 }
               }
@@ -4250,9 +3889,7 @@
     },
     "/api/breeder/breeding/sweep": {
       "post": {
-        "tags": [
-          "breeder: breeding"
-        ],
+        "tags": ["breeder: breeding"],
         "summary": "Raise season + whelping reminders into the care inbox.",
         "security": [
           {
@@ -4271,9 +3908,7 @@
                       "type": "number"
                     }
                   },
-                  "required": [
-                    "raised"
-                  ],
+                  "required": ["raised"],
                   "additionalProperties": false
                 }
               }
@@ -4287,9 +3922,7 @@
     },
     "/api/breeder/buyers/messages/broadcast": {
       "post": {
-        "tags": [
-          "breeder: buyer comms"
-        ],
+        "tags": ["breeder: buyer comms"],
         "summary": "Broadcast a message to a group of buyers.",
         "security": [
           {
@@ -4320,10 +3953,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "subject",
-                  "body"
-                ]
+                "required": ["subject", "body"]
               }
             }
           }
@@ -4340,9 +3970,7 @@
                       "type": "number"
                     }
                   },
-                  "required": [
-                    "sent"
-                  ],
+                  "required": ["sent"],
                   "additionalProperties": false
                 }
               }
@@ -4356,9 +3984,7 @@
     },
     "/api/breeder/buyers/messages/{buyerId}": {
       "post": {
-        "tags": [
-          "breeder: buyer comms"
-        ],
+        "tags": ["breeder: buyer comms"],
         "summary": "Send a direct message to one buyer.",
         "security": [
           {
@@ -4391,10 +4017,7 @@
                     "minLength": 1
                   }
                 },
-                "required": [
-                  "subject",
-                  "body"
-                ]
+                "required": ["subject", "body"]
               }
             }
           }
@@ -4414,9 +4037,7 @@
     },
     "/api/breeder/buyers/messages": {
       "get": {
-        "tags": [
-          "breeder: buyer comms"
-        ],
+        "tags": ["breeder: buyer comms"],
         "summary": "Buyer message history (filter by buyerId / litterId).",
         "security": [
           {
@@ -4457,9 +4078,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "messages"
-                  ],
+                  "required": ["messages"],
                   "additionalProperties": false
                 }
               }
@@ -4473,9 +4092,7 @@
     },
     "/api/breeder/buyers/update-pack/subscriptions": {
       "get": {
-        "tags": [
-          "breeder: buyer comms"
-        ],
+        "tags": ["breeder: buyer comms"],
         "summary": "Weekly update-pack subscriptions.",
         "security": [
           {
@@ -4498,9 +4115,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "subscriptions"
-                  ],
+                  "required": ["subscriptions"],
                   "additionalProperties": false
                 }
               }
@@ -4514,9 +4129,7 @@
     },
     "/api/breeder/buyers/update-pack/subscribe": {
       "post": {
-        "tags": [
-          "breeder: buyer comms"
-        ],
+        "tags": ["breeder: buyer comms"],
         "summary": "Subscribe a buyer to a puppy’s weekly update pack.",
         "security": [
           {
@@ -4539,10 +4152,7 @@
                     "minLength": 1
                   }
                 },
-                "required": [
-                  "buyerId",
-                  "puppyId"
-                ]
+                "required": ["buyerId", "puppyId"]
               }
             }
           }
@@ -4559,9 +4169,7 @@
     },
     "/api/breeder/buyers/update-pack/subscriptions/{id}": {
       "patch": {
-        "tags": [
-          "breeder: buyer comms"
-        ],
+        "tags": ["breeder: buyer comms"],
         "summary": "Activate / deactivate an update-pack subscription.",
         "security": [
           {
@@ -4589,9 +4197,7 @@
                     "type": "boolean"
                   }
                 },
-                "required": [
-                  "active"
-                ]
+                "required": ["active"]
               }
             }
           }
@@ -4611,9 +4217,7 @@
     },
     "/api/breeder/buyers/puppies/{pupId}/go-home-pack": {
       "get": {
-        "tags": [
-          "breeder: buyer comms"
-        ],
+        "tags": ["breeder: buyer comms"],
         "summary": "Assembled go-home pack for a puppy.",
         "security": [
           {
@@ -4645,9 +4249,7 @@
     },
     "/api/breeder/buyers/update-pack/run": {
       "post": {
-        "tags": [
-          "breeder: buyer comms"
-        ],
+        "tags": ["breeder: buyer comms"],
         "summary": "Run the weekly update-pack sweep now.",
         "security": [
           {
@@ -4666,9 +4268,7 @@
                       "type": "number"
                     }
                   },
-                  "required": [
-                    "sent"
-                  ],
+                  "required": ["sent"],
                   "additionalProperties": false
                 }
               }
@@ -4682,9 +4282,7 @@
     },
     "/api/breeder/animals/pens": {
       "get": {
-        "tags": [
-          "breeder: animals"
-        ],
+        "tags": ["breeder: animals"],
         "summary": "Pens with live occupancy.",
         "security": [
           {
@@ -4707,9 +4305,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "pens"
-                  ],
+                  "required": ["pens"],
                   "additionalProperties": false
                 }
               }
@@ -4721,9 +4317,7 @@
         }
       },
       "post": {
-        "tags": [
-          "breeder: animals"
-        ],
+        "tags": ["breeder: animals"],
         "summary": "Create a pen.",
         "security": [
           {
@@ -4752,9 +4346,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "name"
-                ]
+                "required": ["name"]
               }
             }
           }
@@ -4771,9 +4363,7 @@
     },
     "/api/breeder/animals": {
       "get": {
-        "tags": [
-          "breeder: animals"
-        ],
+        "tags": ["breeder: animals"],
         "summary": "All animals in the kennel.",
         "security": [
           {
@@ -4796,9 +4386,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "animals"
-                  ],
+                  "required": ["animals"],
                   "additionalProperties": false
                 }
               }
@@ -4810,9 +4398,7 @@
         }
       },
       "post": {
-        "tags": [
-          "breeder: animals"
-        ],
+        "tags": ["breeder: animals"],
         "summary": "Add an animal.",
         "security": [
           {
@@ -4886,9 +4472,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "name"
-                ]
+                "required": ["name"]
               }
             }
           }
@@ -4905,9 +4489,7 @@
     },
     "/api/breeder/animals/{id}": {
       "get": {
-        "tags": [
-          "breeder: animals"
-        ],
+        "tags": ["breeder: animals"],
         "summary": "One animal + its care plan.",
         "security": [
           {
@@ -4937,9 +4519,7 @@
         }
       },
       "patch": {
-        "tags": [
-          "breeder: animals"
-        ],
+        "tags": ["breeder: animals"],
         "summary": "Update an animal (partial).",
         "security": [
           {
@@ -4971,9 +4551,7 @@
     },
     "/api/breeder/animals/{id}/move": {
       "post": {
-        "tags": [
-          "breeder: animals"
-        ],
+        "tags": ["breeder: animals"],
         "summary": "Move an animal to a pen.",
         "security": [
           {
@@ -5002,9 +4580,7 @@
                     "minLength": 1
                   }
                 },
-                "required": [
-                  "penId"
-                ]
+                "required": ["penId"]
               }
             }
           }
@@ -5024,9 +4600,7 @@
     },
     "/api/breeder/animals/{id}/care-plan": {
       "put": {
-        "tags": [
-          "breeder: animals"
-        ],
+        "tags": ["breeder: animals"],
         "summary": "Upsert an animal’s care plan.",
         "security": [
           {
@@ -5058,9 +4632,7 @@
     },
     "/api/breeder/animals/{id}/weights": {
       "post": {
-        "tags": [
-          "breeder: animals"
-        ],
+        "tags": ["breeder: animals"],
         "summary": "Record a weight reading (+ growth assessment).",
         "security": [
           {
@@ -5103,9 +4675,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "grams"
-                ]
+                "required": ["grams"]
               }
             }
           }
@@ -5122,9 +4692,7 @@
     },
     "/api/breeder/animals/{id}/growth": {
       "get": {
-        "tags": [
-          "breeder: animals"
-        ],
+        "tags": ["breeder: animals"],
         "summary": "Weight curve vs expected + adult trend.",
         "security": [
           {
@@ -5156,9 +4724,7 @@
     },
     "/api/breeder/animals/intake": {
       "post": {
-        "tags": [
-          "breeder: animals"
-        ],
+        "tags": ["breeder: animals"],
         "summary": "Record an attributed intake event (multi-dog identification).",
         "security": [
           {
@@ -5203,10 +4769,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "deviceId",
-                  "kind"
-                ]
+                "required": ["deviceId", "kind"]
               }
             }
           }
@@ -5223,9 +4786,7 @@
     },
     "/api/breeder/animals/{id}/wellness": {
       "get": {
-        "tags": [
-          "breeder: animals"
-        ],
+        "tags": ["breeder: animals"],
         "summary": "21-day food / water / activity / weight insights.",
         "security": [
           {
@@ -5254,9 +4815,7 @@
     },
     "/api/breeder/animals/{id}/pedigree": {
       "get": {
-        "tags": [
-          "breeder: animals"
-        ],
+        "tags": ["breeder: animals"],
         "summary": "Pedigree tree (1–5 generations).",
         "security": [
           {
@@ -5298,9 +4857,7 @@
     },
     "/api/breeder/litters": {
       "get": {
-        "tags": [
-          "breeder: litters"
-        ],
+        "tags": ["breeder: litters"],
         "summary": "Litters with puppy counts.",
         "security": [
           {
@@ -5323,9 +4880,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "litters"
-                  ],
+                  "required": ["litters"],
                   "additionalProperties": false
                 }
               }
@@ -5337,9 +4892,7 @@
         }
       },
       "post": {
-        "tags": [
-          "breeder: litters"
-        ],
+        "tags": ["breeder: litters"],
         "summary": "Create a litter (defaults to status \"planned\").",
         "security": [
           {
@@ -5401,9 +4954,7 @@
     },
     "/api/breeder/litters/{id}/whelp": {
       "post": {
-        "tags": [
-          "breeder: litters"
-        ],
+        "tags": ["breeder: litters"],
         "summary": "Record whelping on a litter.",
         "security": [
           {
@@ -5459,9 +5010,7 @@
     },
     "/api/breeder/litters/{id}/puppies": {
       "get": {
-        "tags": [
-          "breeder: litters"
-        ],
+        "tags": ["breeder: litters"],
         "summary": "Puppies in a litter with growth series.",
         "security": [
           {
@@ -5491,9 +5040,7 @@
         }
       },
       "post": {
-        "tags": [
-          "breeder: litters"
-        ],
+        "tags": ["breeder: litters"],
         "summary": "Add a puppy to a litter.",
         "security": [
           {
@@ -5542,9 +5089,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "name"
-                ]
+                "required": ["name"]
               }
             }
           }
@@ -5561,9 +5106,7 @@
     },
     "/api/breeder/litters/puppies/{pupId}/weights": {
       "post": {
-        "tags": [
-          "breeder: litters"
-        ],
+        "tags": ["breeder: litters"],
         "summary": "Record a puppy weight reading.",
         "security": [
           {
@@ -5606,9 +5149,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "grams"
-                ]
+                "required": ["grams"]
               }
             }
           }
@@ -5625,9 +5166,7 @@
     },
     "/api/breeder/litters/puppies/{pupId}": {
       "patch": {
-        "tags": [
-          "breeder: litters"
-        ],
+        "tags": ["breeder: litters"],
         "summary": "Update a puppy (partial).",
         "security": [
           {
@@ -5659,9 +5198,7 @@
     },
     "/api/breeder/litters/buyers/list": {
       "get": {
-        "tags": [
-          "breeder: litters"
-        ],
+        "tags": ["breeder: litters"],
         "summary": "Buyers / waitlist for the kennel.",
         "security": [
           {
@@ -5684,9 +5221,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "buyers"
-                  ],
+                  "required": ["buyers"],
                   "additionalProperties": false
                 }
               }
@@ -5700,9 +5235,7 @@
     },
     "/api/breeder/litters/buyers": {
       "post": {
-        "tags": [
-          "breeder: litters"
-        ],
+        "tags": ["breeder: litters"],
         "summary": "Add a buyer to the waitlist.",
         "security": [
           {
@@ -5747,9 +5280,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "name"
-                ]
+                "required": ["name"]
               }
             }
           }
@@ -5766,9 +5297,7 @@
     },
     "/api/breeder/litters/buyers/{buyerId}": {
       "patch": {
-        "tags": [
-          "breeder: litters"
-        ],
+        "tags": ["breeder: litters"],
         "summary": "Update a buyer (partial); assigning a puppy reserves it.",
         "security": [
           {
@@ -5800,9 +5329,7 @@
     },
     "/api/breeder/litters/puppies/{pupId}/update-pack": {
       "get": {
-        "tags": [
-          "breeder: litters"
-        ],
+        "tags": ["breeder: litters"],
         "summary": "Data half of the weekly buyer update pack for a puppy.",
         "security": [
           {
@@ -5834,9 +5361,7 @@
     },
     "/api/breeder/ops/consumables": {
       "get": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "Consumables with usage estimate + stock status.",
         "security": [
           {
@@ -5859,9 +5384,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "consumables"
-                  ],
+                  "required": ["consumables"],
                   "additionalProperties": false
                 }
               }
@@ -5873,9 +5396,7 @@
         }
       },
       "post": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "Add a consumable to track.",
         "security": [
           {
@@ -5918,9 +5439,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "name"
-                ]
+                "required": ["name"]
               }
             }
           }
@@ -5937,9 +5456,7 @@
     },
     "/api/breeder/ops/consumables/{id}": {
       "patch": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "Update a consumable (partial).",
         "security": [
           {
@@ -5971,9 +5488,7 @@
     },
     "/api/breeder/ops/consumables/sweep": {
       "post": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "Raise an exception for any low / critical / out consumable.",
         "security": [
           {
@@ -5992,9 +5507,7 @@
                       "type": "number"
                     }
                   },
-                  "required": [
-                    "raised"
-                  ],
+                  "required": ["raised"],
                   "additionalProperties": false
                 }
               }
@@ -6008,9 +5521,7 @@
     },
     "/api/breeder/ops/maintenance": {
       "get": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "Device health counters + maintenance predictions.",
         "security": [
           {
@@ -6033,9 +5544,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "devices"
-                  ],
+                  "required": ["devices"],
                   "additionalProperties": false
                 }
               }
@@ -6049,9 +5558,7 @@
     },
     "/api/breeder/ops/maintenance/{deviceId}/{metric}/limit": {
       "put": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "Set the service limit for a device metric.",
         "security": [
           {
@@ -6087,9 +5594,7 @@
                     "type": "number"
                   }
                 },
-                "required": [
-                  "serviceLimit"
-                ]
+                "required": ["serviceLimit"]
               }
             }
           }
@@ -6106,9 +5611,7 @@
     },
     "/api/breeder/ops/maintenance/{deviceId}/{metric}/serviced": {
       "post": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "Mark a component serviced (resets counter, clears exceptions).",
         "security": [
           {
@@ -6145,9 +5648,7 @@
     },
     "/api/breeder/ops/emergency/status": {
       "get": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "Current emergency state + last event.",
         "security": [
           {
@@ -6166,9 +5667,7 @@
     },
     "/api/breeder/ops/emergency/manifest": {
       "get": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "Evacuation manifest: pen → animals → contacts.",
         "security": [
           {
@@ -6187,9 +5686,7 @@
     },
     "/api/breeder/ops/emergency/trigger": {
       "post": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "Trigger emergency mode (fans out door unlocks).",
         "security": [
           {
@@ -6205,12 +5702,7 @@
                 "properties": {
                   "mode": {
                     "type": "string",
-                    "enum": [
-                      "fire",
-                      "flood",
-                      "evac",
-                      "drill"
-                    ]
+                    "enum": ["fire", "flood", "evac", "drill"]
                   },
                   "note": {
                     "nullable": true,
@@ -6236,9 +5728,7 @@
     },
     "/api/breeder/ops/emergency/end": {
       "post": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "End emergency mode + resolve its exceptions.",
         "security": [
           {
@@ -6257,9 +5747,7 @@
     },
     "/api/breeder/ops/enrichment": {
       "get": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "Enrichment sessions for a day (default today).",
         "security": [
           {
@@ -6292,9 +5780,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "sessions"
-                  ],
+                  "required": ["sessions"],
                   "additionalProperties": false
                 }
               }
@@ -6308,9 +5794,7 @@
     },
     "/api/breeder/ops/enrichment/generate": {
       "post": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "Generate an enrichment rotation for a day.",
         "security": [
           {
@@ -6350,9 +5834,7 @@
                     "type": "number"
                   }
                 },
-                "required": [
-                  "stations"
-                ]
+                "required": ["stations"]
               }
             }
           }
@@ -6369,9 +5851,7 @@
     },
     "/api/breeder/ops/enrichment/{id}/complete": {
       "post": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "Mark an enrichment session done.",
         "security": [
           {
@@ -6419,9 +5899,7 @@
     },
     "/api/breeder/ops/offline-journal": {
       "get": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "Recent offline / power-cut journal entries.",
         "security": [
           {
@@ -6444,9 +5922,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "journal"
-                  ],
+                  "required": ["journal"],
                   "additionalProperties": false
                 }
               }
@@ -6458,9 +5934,7 @@
         }
       },
       "post": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "Record an offline / power-cut window for a device.",
         "security": [
           {
@@ -6500,10 +5974,7 @@
                     "type": "boolean"
                   }
                 },
-                "required": [
-                  "deviceId",
-                  "wentOfflineAt"
-                ]
+                "required": ["deviceId", "wentOfflineAt"]
               }
             }
           }
@@ -6520,9 +5991,7 @@
     },
     "/api/breeder/ops/notification-channels": {
       "get": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "Which notification channels this deployment can deliver on.",
         "security": [
           {
@@ -6541,9 +6010,7 @@
     },
     "/api/breeder/ops/notification-prefs": {
       "get": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "The current user’s notification preferences.",
         "security": [
           {
@@ -6560,9 +6027,7 @@
         }
       },
       "put": {
-        "tags": [
-          "breeder: ops"
-        ],
+        "tags": ["breeder: ops"],
         "summary": "Upsert the current user’s notification preferences.",
         "security": [
           {
@@ -6623,9 +6088,7 @@
     },
     "/api/breeder/ops/devices": {
       "get": {
-        "tags": [
-          "breeder: devices"
-        ],
+        "tags": ["breeder: devices"],
         "summary": "Every device in the kennel.",
         "security": [
           {
@@ -6648,9 +6111,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "devices"
-                  ],
+                  "required": ["devices"],
                   "additionalProperties": false
                 }
               }
@@ -6664,9 +6125,7 @@
     },
     "/api/breeder/ops/devices/pairing": {
       "post": {
-        "tags": [
-          "breeder: devices"
-        ],
+        "tags": ["breeder: devices"],
         "summary": "Mint a short pairing code for a device to claim itself.",
         "security": [
           {
@@ -6682,15 +6141,7 @@
                 "properties": {
                   "deviceType": {
                     "type": "string",
-                    "enum": [
-                      "feeder",
-                      "water",
-                      "door",
-                      "sensor",
-                      "gps",
-                      "scale",
-                      "hub"
-                    ]
+                    "enum": ["feeder", "water", "door", "sensor", "gps", "scale", "hub"]
                   },
                   "name": {
                     "type": "string"
@@ -6700,9 +6151,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "deviceType"
-                ]
+                "required": ["deviceType"]
               }
             }
           }
@@ -6717,9 +6166,7 @@
         }
       },
       "get": {
-        "tags": [
-          "breeder: devices"
-        ],
+        "tags": ["breeder: devices"],
         "summary": "Open (unclaimed) pairing codes.",
         "security": [
           {
@@ -6742,9 +6189,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "pairings"
-                  ],
+                  "required": ["pairings"],
                   "additionalProperties": false
                 }
               }
@@ -6758,9 +6203,7 @@
     },
     "/api/breeder/ops/devices/pairing/{code}": {
       "delete": {
-        "tags": [
-          "breeder: devices"
-        ],
+        "tags": ["breeder: devices"],
         "summary": "Cancel a pairing code.",
         "security": [
           {
@@ -6792,9 +6235,7 @@
     },
     "/api/breeder/ops/devices/claim": {
       "post": {
-        "tags": [
-          "breeder: devices"
-        ],
+        "tags": ["breeder: devices"],
         "summary": "Claim a device by pairing code (returns MQTT creds once).",
         "security": [
           {
@@ -6824,10 +6265,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "code",
-                  "deviceId"
-                ]
+                "required": ["code", "deviceId"]
               }
             }
           }
@@ -6847,9 +6285,7 @@
     },
     "/api/breeder/website": {
       "get": {
-        "tags": [
-          "breeder: website"
-        ],
+        "tags": ["breeder: website"],
         "summary": "Public site config + published counts.",
         "security": [
           {
@@ -6868,9 +6304,7 @@
     },
     "/api/breeder/website/kennel": {
       "put": {
-        "tags": [
-          "breeder: website"
-        ],
+        "tags": ["breeder: website"],
         "summary": "Set the kennel’s public identity.",
         "security": [
           {
@@ -6920,9 +6354,7 @@
     },
     "/api/breeder/website/{kind}/{id}": {
       "patch": {
-        "tags": [
-          "breeder: website"
-        ],
+        "tags": ["breeder: website"],
         "summary": "Toggle publish / set photos / set public copy for one row.",
         "security": [
           {
@@ -6936,11 +6368,7 @@
             "required": true,
             "schema": {
               "type": "string",
-              "enum": [
-                "animal",
-                "litter",
-                "puppy"
-              ]
+              "enum": ["animal", "litter", "puppy"]
             }
           },
           {
@@ -6967,9 +6395,7 @@
     },
     "/api/breeder/website/inventory": {
       "get": {
-        "tags": [
-          "breeder: website"
-        ],
+        "tags": ["breeder: website"],
         "summary": "Everything publishable with its publish + photo state.",
         "security": [
           {
@@ -6988,9 +6414,7 @@
     },
     "/api/public/kennel": {
       "get": {
-        "tags": [
-          "public"
-        ],
+        "tags": ["public"],
         "summary": "Public kennel profile.",
         "responses": {
           "200": {
@@ -7007,9 +6431,7 @@
     },
     "/api/public/dogs": {
       "get": {
-        "tags": [
-          "public"
-        ],
+        "tags": ["public"],
         "summary": "Published breeding / retired dogs.",
         "responses": {
           "200": {
@@ -7023,9 +6445,7 @@
     },
     "/api/public/litters": {
       "get": {
-        "tags": [
-          "public"
-        ],
+        "tags": ["public"],
         "summary": "Published litters with puppies.",
         "responses": {
           "200": {
@@ -7039,9 +6459,7 @@
     },
     "/api/public/litters/{id}": {
       "get": {
-        "tags": [
-          "public"
-        ],
+        "tags": ["public"],
         "summary": "One published litter.",
         "parameters": [
           {
@@ -7068,10 +6486,13 @@
     },
     "/api/public/inquiries": {
       "post": {
-        "tags": [
-          "public"
-        ],
+        "tags": ["public"],
         "summary": "Submit a website inquiry (rate-limited per IP).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -7100,10 +6521,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "name",
-                  "email"
-                ]
+                "required": ["name", "email"]
               }
             }
           }
@@ -7120,9 +6538,7 @@
     },
     "/api/devices": {
       "get": {
-        "tags": [
-          "owner: devices"
-        ],
+        "tags": ["owner: devices"],
         "summary": "All devices for the owner.",
         "security": [
           {
@@ -7139,9 +6555,7 @@
         }
       },
       "post": {
-        "tags": [
-          "owner: devices"
-        ],
+        "tags": ["owner: devices"],
         "summary": "Create a device.",
         "security": [
           {
@@ -7163,13 +6577,16 @@
     },
     "/api/devices/claim": {
       "post": {
-        "tags": [
-          "owner: devices"
-        ],
+        "tags": ["owner: devices"],
         "summary": "Claim a device (issues MQTT creds once).",
         "security": [
           {
             "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
           }
         ],
         "responses": {
@@ -7184,9 +6601,7 @@
     },
     "/api/devices/{id}/levels": {
       "get": {
-        "tags": [
-          "owner: devices"
-        ],
+        "tags": ["owner: devices"],
         "summary": "Food / water levels for a device.",
         "security": [
           {
@@ -7215,9 +6630,7 @@
     },
     "/api/devices/{id}": {
       "get": {
-        "tags": [
-          "owner: devices"
-        ],
+        "tags": ["owner: devices"],
         "summary": "One device.",
         "security": [
           {
@@ -7247,9 +6660,7 @@
         }
       },
       "put": {
-        "tags": [
-          "owner: devices"
-        ],
+        "tags": ["owner: devices"],
         "summary": "Update a device.",
         "security": [
           {
@@ -7279,9 +6690,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "owner: devices"
-        ],
+        "tags": ["owner: devices"],
         "summary": "Delete a device.",
         "security": [
           {
@@ -7310,9 +6719,7 @@
     },
     "/api/devices/{id}/status": {
       "post": {
-        "tags": [
-          "owner: devices"
-        ],
+        "tags": ["owner: devices"],
         "summary": "Update reported device status.",
         "security": [
           {
@@ -7341,9 +6748,7 @@
     },
     "/api/devices/{id}/feed": {
       "post": {
-        "tags": [
-          "owner: devices"
-        ],
+        "tags": ["owner: devices"],
         "summary": "Trigger a feed (waits for device ack).",
         "security": [
           {
@@ -7358,6 +6763,9 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
           }
         ],
         "responses": {
@@ -7372,9 +6780,7 @@
     },
     "/api/devices/{id}/dispense": {
       "post": {
-        "tags": [
-          "owner: devices"
-        ],
+        "tags": ["owner: devices"],
         "summary": "Trigger a water dispense.",
         "security": [
           {
@@ -7403,9 +6809,7 @@
     },
     "/api/schedules": {
       "get": {
-        "tags": [
-          "owner: schedules"
-        ],
+        "tags": ["owner: schedules"],
         "summary": "All schedules for the owner.",
         "security": [
           {
@@ -7422,9 +6826,7 @@
         }
       },
       "post": {
-        "tags": [
-          "owner: schedules"
-        ],
+        "tags": ["owner: schedules"],
         "summary": "Create a schedule.",
         "security": [
           {
@@ -7446,9 +6848,7 @@
     },
     "/api/schedules/{id}": {
       "get": {
-        "tags": [
-          "owner: schedules"
-        ],
+        "tags": ["owner: schedules"],
         "summary": "One schedule.",
         "security": [
           {
@@ -7478,9 +6878,7 @@
         }
       },
       "put": {
-        "tags": [
-          "owner: schedules"
-        ],
+        "tags": ["owner: schedules"],
         "summary": "Update a schedule.",
         "security": [
           {
@@ -7510,9 +6908,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "owner: schedules"
-        ],
+        "tags": ["owner: schedules"],
         "summary": "Delete a schedule.",
         "security": [
           {
@@ -7541,9 +6937,7 @@
     },
     "/api/schedules/{id}/toggle": {
       "post": {
-        "tags": [
-          "owner: schedules"
-        ],
+        "tags": ["owner: schedules"],
         "summary": "Enable / disable a schedule.",
         "security": [
           {
@@ -7572,9 +6966,7 @@
     },
     "/api/events": {
       "get": {
-        "tags": [
-          "owner: events"
-        ],
+        "tags": ["owner: events"],
         "summary": "Feed / device events for the owner.",
         "security": [
           {
@@ -7591,9 +6983,7 @@
         }
       },
       "post": {
-        "tags": [
-          "owner: events"
-        ],
+        "tags": ["owner: events"],
         "summary": "Record an event.",
         "security": [
           {
@@ -7612,9 +7002,7 @@
     },
     "/api/events/stats": {
       "get": {
-        "tags": [
-          "owner: events"
-        ],
+        "tags": ["owner: events"],
         "summary": "Aggregate event stats.",
         "security": [
           {
@@ -7633,9 +7021,7 @@
     },
     "/api/events/recent": {
       "get": {
-        "tags": [
-          "owner: events"
-        ],
+        "tags": ["owner: events"],
         "summary": "Most recent events.",
         "security": [
           {
@@ -7654,9 +7040,7 @@
     },
     "/api/events/{id}": {
       "get": {
-        "tags": [
-          "owner: events"
-        ],
+        "tags": ["owner: events"],
         "summary": "One event.",
         "security": [
           {
@@ -7688,9 +7072,7 @@
     },
     "/api/setup/status": {
       "get": {
-        "tags": [
-          "owner: setup"
-        ],
+        "tags": ["owner: setup"],
         "summary": "First-run setup progress (drives the wizard).",
         "security": [
           {
@@ -7709,9 +7091,7 @@
     },
     "/api/setup/kennel": {
       "post": {
-        "tags": [
-          "owner: setup"
-        ],
+        "tags": ["owner: setup"],
         "summary": "Create / update THE kennel.",
         "security": [
           {
@@ -7757,9 +7137,7 @@
     },
     "/api/setup/complete": {
       "post": {
-        "tags": [
-          "owner: setup"
-        ],
+        "tags": ["owner: setup"],
         "summary": "Mark setup finished.",
         "security": [
           {
@@ -7784,9 +7162,7 @@
     },
     "/api/setup/seed-demo": {
       "post": {
-        "tags": [
-          "owner: setup"
-        ],
+        "tags": ["owner: setup"],
         "summary": "One-shot demo seed (pens + dam + sire + preset rules).",
         "security": [
           {
@@ -7811,9 +7187,7 @@
     },
     "/api/users": {
       "get": {
-        "tags": [
-          "owner: users"
-        ],
+        "tags": ["owner: users"],
         "summary": "Users in the kennel.",
         "security": [
           {
@@ -7832,9 +7206,7 @@
     },
     "/api/users/invite": {
       "post": {
-        "tags": [
-          "owner: users"
-        ],
+        "tags": ["owner: users"],
         "summary": "Invite a user (returns a token; email delivery is Phase 3).",
         "security": [
           {
@@ -7853,10 +7225,7 @@
                   },
                   "role": {
                     "type": "string",
-                    "enum": [
-                      "owner",
-                      "staff"
-                    ]
+                    "enum": ["owner", "staff"]
                   }
                 }
               }
@@ -7878,9 +7247,7 @@
     },
     "/api/users/invites": {
       "get": {
-        "tags": [
-          "owner: users"
-        ],
+        "tags": ["owner: users"],
         "summary": "Open + recent invites.",
         "security": [
           {
@@ -7899,9 +7266,7 @@
     },
     "/api/users/invites/{token}": {
       "delete": {
-        "tags": [
-          "owner: users"
-        ],
+        "tags": ["owner: users"],
         "summary": "Revoke an invite.",
         "security": [
           {
@@ -7933,9 +7298,7 @@
     },
     "/api/users/{id}": {
       "patch": {
-        "tags": [
-          "owner: users"
-        ],
+        "tags": ["owner: users"],
         "summary": "Update a user’s role / active state.",
         "security": [
           {
@@ -7961,10 +7324,7 @@
                 "properties": {
                   "role": {
                     "type": "string",
-                    "enum": [
-                      "owner",
-                      "staff"
-                    ]
+                    "enum": ["owner", "staff"]
                   },
                   "active": {
                     "type": "boolean"
