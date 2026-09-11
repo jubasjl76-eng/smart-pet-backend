@@ -6,6 +6,7 @@
 import './instrument.js'; // Sentry — must be the very first import (patches http/express/pg)
 import { config } from './config/index.js'; // loads + validates env, exits on a bad config
 import { initializeDatabase, pool } from './database/index.js';
+import { closeRedis } from './redis.js';
 import { runMigrations } from './database/migrate.js';
 import { runSeed } from './database/seed.js';
 import { startFeederMqtt, stopFeederMqtt } from './services/feederMqtt.js';
@@ -51,6 +52,7 @@ async function shutdown(signal?: string): Promise<void> {
   server.close(async () => {
     stopBreederEngine();
     stopFeederMqtt();
+    await closeRedis();
     await pool.end().catch(() => {});
     clearTimeout(guard);
     log.info('shutdown complete');

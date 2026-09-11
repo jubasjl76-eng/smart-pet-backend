@@ -79,6 +79,9 @@ const schema = z.object({
 
   // ── secret (AWS Secrets Manager at runtime; SOPS+age for git-committed non-prod) ──
   JWT_SECRET: z.string().min(1, 'JWT_SECRET is unset — refusing to boot'),
+  // Unset (dev/local) → src/redis.ts exports `redis: null`, every consumer
+  // falls back to in-process/single-instance behavior (Phase 20).
+  REDIS_URL: z.string().optional(),
   PG_PASSWORD: z.string().default('postgres'),
   MQTT_PASSWORD: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
@@ -91,8 +94,15 @@ const schema = z.object({
 export const config = loadConfig(schema, { name: 'backend' });
 
 export const SECRET_KEYS = [
-  'JWT_SECRET', 'PG_PASSWORD', 'MQTT_PASSWORD', 'RESEND_API_KEY',
-  'TWILIO_AUTH_TOKEN', 'WEBSITE_REVALIDATE_SECRET', 'SEED_OWNER_PASSWORD', 'SEED_STAFF_PASSWORD',
+  'JWT_SECRET',
+  'REDIS_URL',
+  'PG_PASSWORD',
+  'MQTT_PASSWORD',
+  'RESEND_API_KEY',
+  'TWILIO_AUTH_TOKEN',
+  'WEBSITE_REVALIDATE_SECRET',
+  'SEED_OWNER_PASSWORD',
+  'SEED_STAFF_PASSWORD',
 ] as const;
 
 /** The effective MQTT broker URL for the backend client (feeder + engine). */
@@ -100,12 +110,12 @@ export const mqttUrl = (): string =>
   config.MQTT_URL || config.MQTT_BROKER || 'mqtt://localhost:1883';
 
 /** The MQTT broker URL to hand a device on claim (falls back to the client URL). */
-export const mqttPublicUrl = (): string | null =>
-  config.MQTT_PUBLIC_URL || config.MQTT_URL || null;
+export const mqttPublicUrl = (): string | null => config.MQTT_PUBLIC_URL || config.MQTT_URL || null;
 
 /** The Postgres database name, honouring the legacy edge-mode default. */
 export const pgDatabase = (): string =>
   config.PG_DATABASE || (config.BACKEND_MODE === 'edge' ? 'smartpet_edge' : 'smartpet');
 
 /** Config with secrets masked — safe to log at boot. */
-export const safeConfig = () => redact({ ...config, MQTT_URL: mqttUrl(), PG_DATABASE: pgDatabase() }, SECRET_KEYS);
+export const safeConfig = () =>
+  redact({ ...config, MQTT_URL: mqttUrl(), PG_DATABASE: pgDatabase() }, SECRET_KEYS);

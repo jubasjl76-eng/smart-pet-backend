@@ -19,6 +19,7 @@ import userRoutes from './routes/users.js';
 import { auth, ownerOnly, adminOnly } from './middleware/auth.js';
 import { query, queryOne } from './database/index.js';
 import { isFeederMqttConnected } from './services/feederMqtt.js';
+import { redis, redisHealthy } from './redis.js';
 import { mountBreeder } from './breeder/index.js';
 import { getFlags } from './services/flags.js';
 import { buildOpenApiDoc, docsHtml } from './openapi/index.js';
@@ -46,13 +47,15 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
   // nosniff, frameguard, referrer-policy etc. come from helmet's defaults;
   // `X-Powered-By` is dropped. CORP is `cross-origin` so the dashboard / app
   // (separate origins) can read responses. `/docs` overrides the CSP below.
-  app.use(helmet({
-    contentSecurityPolicy: {
-      useDefaults: false,
-      directives: { 'default-src': ["'none'"], 'frame-ancestors': ["'none'"] },
-    },
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
-  }));
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: { 'default-src': ["'none'"], 'frame-ancestors': ["'none'"] },
+      },
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
 
   app.use(cors());
   app.use(express.json());
@@ -78,19 +81,37 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
   // Liveness — the process is up. Always 200.
   app.get('/health', (_req: Request, res: Response) => {
     res.json({
-      status: 'ok', mode: BACKEND_MODE, timestamp: new Date().toISOString(),
-      uptime: process.uptime(), version: VERSION, port: 3000,
+      status: 'ok',
+      mode: BACKEND_MODE,
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      version: VERSION,
+      port: 3000,
     });
   });
 
-  // Readiness — 503 until the DB answers and MQTT is connected, and while draining.
+  // Readiness — 503 until the DB answers, MQTT is connected, and (when
+  // REDIS_URL is set) Redis PINGs, and while draining. `redis` in the body is
+  // `null` when unconfigured (dev/local, expected) rather than a failure.
   app.get('/ready', async (_req: Request, res: Response) => {
     let db = false;
-    try { await query('SELECT 1'); db = true; } catch { db = false; }
+    try {
+      await query('SELECT 1');
+      db = true;
+    } catch {
+      db = false;
+    }
     const mqtt = isFeederMqttConnected();
+    const redisOk = await redisHealthy();
     const draining = isShuttingDown();
-    const ok = db && mqtt && !draining;
-    res.status(ok ? 200 : 503).json({ status: ok ? 'ready' : 'not-ready', db, mqtt, shuttingDown: draining });
+    const ok = db && mqtt && redisOk && !draining;
+    res.status(ok ? 200 : 503).json({
+      status: ok ? 'ready' : 'not-ready',
+      db,
+      mqtt,
+      redis: redis ? redisOk : null,
+      shuttingDown: draining,
+    });
   });
 
   // Prometheus metrics (Phase 16).
@@ -104,7 +125,12 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
     directives: {
       'default-src': ["'self'"],
       'script-src': ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
-      'style-src': ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net', 'https://fonts.googleapis.com'],
+      'style-src': [
+        "'self'",
+        "'unsafe-inline'",
+        'https://cdn.jsdelivr.net',
+        'https://fonts.googleapis.com',
+      ],
       'font-src': ["'self'", 'https://fonts.gstatic.com', 'data:'],
       'img-src': ["'self'", 'data:', 'https:'],
       'connect-src': ["'self'"],
@@ -117,7 +143,12 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
 
   // Non-secret runtime config for the dashboard / app (no auth).
   app.get('/api/config', async (_req: Request, res: Response) => {
-    res.json({ env: config.NODE_ENV, mode: BACKEND_MODE, version: VERSION, flags: await getFlags() });
+    res.json({
+      env: config.NODE_ENV,
+      mode: BACKEND_MODE,
+      version: VERSION,
+      flags: await getFlags(),
+    });
   });
 
   function closed(_req: Request, res: Response) {
@@ -148,7 +179,8 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
     const userId = (req as { user?: { id?: string } }).user?.id;
     try {
       const pet = await queryOne<{ id: string; name: string }>(
-        'SELECT id, name FROM pets WHERE user_id = $1 LIMIT 1', [userId],
+        'SELECT id, name FROM pets WHERE user_id = $1 LIMIT 1',
+        [userId],
       );
       res.json({ pet: pet || { name: null } });
     } catch {
@@ -159,14 +191,28 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
   app.put('/api/pet', auth, async (req: Request, res: Response) => {
     const userId = (req as { user?: { id?: string } }).user?.id;
     const name = String(req.body?.name || '').trim();
-    if (!name) { res.status(400).json({ error: 'name required' }); return; }
+    if (!name) {
+      res.status(400).json({ error: 'name required' });
+      return;
+    }
     try {
-      const existing = await queryOne<{ id: string }>('SELECT id FROM pets WHERE user_id = $1 LIMIT 1', [userId]);
+      const existing = await queryOne<{ id: string }>(
+        'SELECT id FROM pets WHERE user_id = $1 LIMIT 1',
+        [userId],
+      );
       if (existing) {
-        const pet = await queryOne('UPDATE pets SET name = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name', [name, existing.id]);
+        const pet = await queryOne(
+          'UPDATE pets SET name = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name',
+          [name, existing.id],
+        );
         res.json({ pet });
       } else {
-        const pet = (await query('INSERT INTO pets (user_id, name) VALUES ($1, $2) RETURNING id, name', [userId, name]))[0];
+        const pet = (
+          await query('INSERT INTO pets (user_id, name) VALUES ($1, $2) RETURNING id, name', [
+            userId,
+            name,
+          ])
+        )[0];
         res.json({ pet });
       }
     } catch {
@@ -177,8 +223,14 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
   app.get('/api/stats', auth, ownerOnly, async (req: Request, res: Response) => {
     const userId = (req as { user?: { id?: string } }).user?.id;
     try {
-      const devices = await query<{ device_type: string }>(`SELECT * FROM devices WHERE user_id = $1`, [userId]);
-      const schedules = await query<{ enabled: boolean }>(`SELECT * FROM schedules WHERE user_id = $1`, [userId]);
+      const devices = await query<{ device_type: string }>(
+        `SELECT * FROM devices WHERE user_id = $1`,
+        [userId],
+      );
+      const schedules = await query<{ enabled: boolean }>(
+        `SELECT * FROM schedules WHERE user_id = $1`,
+        [userId],
+      );
       res.json({
         totalDevices: devices.length,
         feeders: devices.filter((d) => d.device_type === 'feeder').length,
@@ -212,6 +264,7 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
 
 /** Boot-time config line — kept here so index.ts stays thin. */
 export function logBootConfig(): void {
-  if (config.PORT !== 3000) log.warn({ port: config.PORT }, 'API is locked to port 3000; ignoring PORT');
+  if (config.PORT !== 3000)
+    log.warn({ port: config.PORT }, 'API is locked to port 3000; ignoring PORT');
   log.info({ config: safeConfig() }, 'boot');
 }
