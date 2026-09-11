@@ -10,7 +10,12 @@ import { closeRedis } from './redis.js';
 import { runMigrations } from './database/migrate.js';
 import { runSeed } from './database/seed.js';
 import { startFeederMqtt, stopFeederMqtt } from './services/feederMqtt.js';
-import { initBreederSchema, startBreederEngine, stopBreederEngine } from './breeder/index.js';
+import {
+  initBreederSchema,
+  startBreederEngine,
+  stopBreederEngine,
+  closeStreamRedis,
+} from './breeder/index.js';
 import { VERSION } from './version.js';
 import { log } from './log.js';
 import { buildApp, logBootConfig } from './app.js';
@@ -52,6 +57,7 @@ async function shutdown(signal?: string): Promise<void> {
   server.close(async () => {
     stopBreederEngine();
     stopFeederMqtt();
+    await closeStreamRedis();
     await closeRedis();
     await pool.end().catch(() => {});
     clearTimeout(guard);
