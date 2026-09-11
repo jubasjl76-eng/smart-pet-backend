@@ -23,7 +23,7 @@ import buyerComms from './routes/buyerComms.js';
 import breeding from './routes/breeding.js';
 import documents from './routes/documents.js';
 import privacy from './routes/privacy.js';
-import fleet from './routes/fleet.js';
+import fleet, { registerFleetOtaWorker } from './routes/fleet.js';
 import geo from './routes/geo.js';
 import websiteRoutes from './routes/website.js';
 import { streamHandler } from './stream.js';
@@ -31,6 +31,7 @@ import { streamHandler } from './stream.js';
 export { startBreederEngine, stopBreederEngine, engineTick } from './engine/index.js';
 export { initBreederSchema } from './schema.js';
 export { closeStreamRedis } from './stream.js';
+export { registerFleetOtaWorker };
 
 export function mountBreeder(app: Express): void {
   const guard = [auth, breederLimiter, withKennel];

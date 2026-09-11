@@ -35,6 +35,22 @@ capped at 6h — until `notifications.max_attempts` (default 5), then `failed`.
 Migration `003_notifications_delivery.sql` adds `next_attempt_at`,
 `max_attempts`, `provider_ref`.
 
+**Not on the `pg-boss` job queue (Phase 20, A12 #3).** `notifications` is
+already a transactional-outbox-shaped table — queued rows, a backoff-driven
+`next_attempt_at`, a terminal `failed` state — drained by the same
+leader-locked engine tick that Phase 20 introduced specifically to stop
+sweeps from double-running past one instance. Moving delivery onto `pg-boss`
+would mean re-deriving that already-working, tested retry logic to fit its
+own retry model, and would change the synchronous "run now" contract several
+ops endpoints rely on (`POST /update-pack/run`, `POST /retention/run`, the
+engine-tick "run notifications now" path) for a mostly architectural win at
+this project's scale. `pg-boss` was introduced instead for the workload that
+genuinely needed a durable, safely-concurrent-dequeue worker with a real
+dead-letter queue: fleet OTA fan-out (`docs/phase9-fleet.md`). Update-pack /
+weekly buyer emails (`updatePackSweep()`, `docs/phase5-buyer-comms.md`)
+already deliver through this same `notifications` table, so they inherit
+whatever this mechanism does without any change of their own.
+
 ## API — for the console (Phase 4 dashboard task)
 
 ### `GET /api/breeder/ops/notification-channels`

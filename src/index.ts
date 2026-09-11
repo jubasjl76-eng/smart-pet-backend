@@ -7,6 +7,7 @@ import './instrument.js'; // Sentry — must be the very first import (patches h
 import { config } from './config/index.js'; // loads + validates env, exits on a bad config
 import { initializeDatabase, pool } from './database/index.js';
 import { closeRedis } from './redis.js';
+import { startQueue, stopQueue } from './jobs/queue.js';
 import { runMigrations } from './database/migrate.js';
 import { runSeed } from './database/seed.js';
 import { startFeederMqtt, stopFeederMqtt } from './services/feederMqtt.js';
@@ -15,6 +16,7 @@ import {
   startBreederEngine,
   stopBreederEngine,
   closeStreamRedis,
+  registerFleetOtaWorker,
 } from './breeder/index.js';
 import { VERSION } from './version.js';
 import { log } from './log.js';
@@ -35,8 +37,10 @@ initializeDatabase()
   .then(() => runSeed())
   .then(() => startFeederMqtt())
   .then(() => startBreederEngine())
+  .then(() => startQueue())
+  .then(() => registerFleetOtaWorker())
   .catch((e) => {
-    log.error({ err: e }, 'database/mqtt boot failed');
+    log.error({ err: e }, 'database/mqtt/queue boot failed');
   });
 
 const server = app.listen(PORT, () => {
@@ -57,6 +61,7 @@ async function shutdown(signal?: string): Promise<void> {
   server.close(async () => {
     stopBreederEngine();
     stopFeederMqtt();
+    await stopQueue();
     await closeStreamRedis();
     await closeRedis();
     await pool.end().catch(() => {});

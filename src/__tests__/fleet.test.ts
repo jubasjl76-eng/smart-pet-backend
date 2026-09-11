@@ -35,13 +35,22 @@ const db = new PGlite();
 vi.mock('../database/index.js', () => ({
   query: async (t: string, p?: unknown[]) => (await db.query(t, p as unknown[])).rows,
   queryOne: async (t: string, p?: unknown[]) => (await db.query(t, p as unknown[])).rows[0] ?? null,
-  execute: async (t: string, p?: unknown[]) => { await db.query(t, p as unknown[]); },
+  execute: async (t: string, p?: unknown[]) => {
+    await db.query(t, p as unknown[]);
+  },
   pool: {},
 }));
 const publishCommand = vi.fn(async () => {});
 vi.mock('../services/feederMqtt.js', () => ({ publishCommand }));
 
-const { default: fleetRouter, fleetSweep } = await import('../breeder/routes/fleet.js');
+const bossSend = vi.fn(async () => 'job-id');
+vi.mock('../jobs/queue.js', () => ({ getQueue: () => ({ send: bossSend }) }));
+
+const {
+  default: fleetRouter,
+  fleetSweep,
+  otaPushHandler,
+} = await import('../breeder/routes/fleet.js');
 
 const M = dirname(fileURLToPath(import.meta.url)).replace(/__tests__$/, 'database/migrations');
 let base: string;
@@ -70,18 +79,30 @@ beforeAll(async () => {
   app.use(express.json());
   app.use((req, _res, next) => {
     (req as unknown as { kennelId: string }).kennelId = 'home';
-    (req as unknown as { user: { id: string } }).user = { id: '00000000-0000-0000-0000-0000000000aa' };
+    (req as unknown as { user: { id: string } }).user = {
+      id: '00000000-0000-0000-0000-0000000000aa',
+    };
     next();
   });
   app.use(fleetRouter);
-  const srv = await new Promise<import('node:http').Server>((r) => { const s = app.listen(0, () => r(s)); });
+  const srv = await new Promise<import('node:http').Server>((r) => {
+    const s = app.listen(0, () => r(s));
+  });
   base = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
 });
 
 const post = (p: string, body: unknown) =>
-  fetch(`${base}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  fetch(`${base}${p}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 const patch = (p: string, body: unknown) =>
-  fetch(`${base}${p}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  fetch(`${base}${p}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 
 describe('firmware + rollout routes', () => {
   let fwId = '';
@@ -89,15 +110,28 @@ describe('firmware + rollout routes', () => {
 
   it('publishes a build and rejects a duplicate version', async () => {
     const r = await post('/firmware', {
-      deviceType: 'feeder', version: '1.4.0', url: 'https://x/f-1.4.0.bin', sha256: 'a'.repeat(64),
-      signingKeyId: 'fw-key-2026', provenance: { builder: 'gha', slsa: 3 },
+      deviceType: 'feeder',
+      version: '1.4.0',
+      url: 'https://x/f-1.4.0.bin',
+      sha256: 'a'.repeat(64),
+      signingKeyId: 'fw-key-2026',
+      provenance: { builder: 'gha', slsa: 3 },
     });
     expect(r.status).toBe(201);
     const created = (await r.json()).firmware;
     fwId = created.id;
     expect(created.signing_key_id).toBe('fw-key-2026');
     expect(created.provenance).toMatchObject({ builder: 'gha', slsa: 3 });
-    expect((await post('/firmware', { deviceType: 'feeder', version: '1.4.0', url: 'https://x/again.bin', sha256: 'b'.repeat(64) })).status).toBe(409);
+    expect(
+      (
+        await post('/firmware', {
+          deviceType: 'feeder',
+          version: '1.4.0',
+          url: 'https://x/again.bin',
+          sha256: 'b'.repeat(64),
+        })
+      ).status,
+    ).toBe(409);
   });
 
   it('starts a canary rollout at 5%', async () => {
@@ -115,7 +149,12 @@ describe('firmware + rollout routes', () => {
   });
 
   it('a second rollout for the same type closes the first', async () => {
-    const r2 = await post('/firmware', { deviceType: 'feeder', version: '1.5.0', url: 'https://x/f-1.5.0.bin', sha256: 'c'.repeat(64) });
+    const r2 = await post('/firmware', {
+      deviceType: 'feeder',
+      version: '1.5.0',
+      url: 'https://x/f-1.5.0.bin',
+      sha256: 'c'.repeat(64),
+    });
     const fw2 = (await r2.json()).firmware.id;
     await post('/rollouts', { firmwareId: fw2, percent: 10 });
     const live = (await db.query(`SELECT state FROM firmware_rollouts WHERE state <> 'done'`)).rows;
@@ -124,26 +163,41 @@ describe('firmware + rollout routes', () => {
 });
 
 describe('fleetSweep + GET /devices', () => {
-  it('offers the OTA to in-bucket online devices, capped per tick', async () => {
-    publishCommand.mockClear();
+  it('enqueues an OTA push job per in-bucket online device, capped per tick', async () => {
+    bossSend.mockClear();
     // fresh rollout at 100% so every device is in-bucket
     await db.query(`UPDATE firmware_rollouts SET state = 'done'`);
-    const fw = (await db.query<{ id: string }>(`INSERT INTO firmware (device_type, version, url, sha256, signing_key_id)
-      VALUES ('feeder','2.0.0','https://x/2.bin',$1,'fw-key-2026') RETURNING id`, ['d'.repeat(64)])).rows[0];
-    await db.query(`INSERT INTO firmware_rollouts (firmware_id, device_type, state, percent)
-      VALUES ($1,'feeder','rolling',100)`, [fw.id]);
+    const fw = (
+      await db.query<{ id: string }>(
+        `INSERT INTO firmware (device_type, version, url, sha256, signing_key_id)
+      VALUES ('feeder','2.0.0','https://x/2.bin',$1,'fw-key-2026') RETURNING id`,
+        ['d'.repeat(64)],
+      )
+    ).rows[0];
+    await db.query(
+      `INSERT INTO firmware_rollouts (firmware_id, device_type, state, percent)
+      VALUES ($1,'feeder','rolling',100)`,
+      [fw.id],
+    );
     for (let i = 0; i < 15; i++) {
-      await db.query(`INSERT INTO devices (device_id, device_type, kennel_id, is_online) VALUES ($1,'feeder','home',true)`, [`f-${i}`]);
+      await db.query(
+        `INSERT INTO devices (device_id, device_type, kennel_id, is_online) VALUES ($1,'feeder','home',true)`,
+        [`f-${i}`],
+      );
     }
-    await db.query(`INSERT INTO devices (device_id, device_type, kennel_id, is_online) VALUES ('f-off','feeder','home',false)`);
+    await db.query(
+      `INSERT INTO devices (device_id, device_type, kennel_id, is_online) VALUES ('f-off','feeder','home',false)`,
+    );
 
     const r = await fleetSweep();
-    expect(r.pushed).toBe(10);              // OTA_PER_TICK cap
-    expect(publishCommand).toHaveBeenCalledTimes(10);
-    expect(publishCommand.mock.calls[0][3]).toBe('feeder'); // deviceType routed on the topic
-    const otaBody = publishCommand.mock.calls[0][2] as { command: string; params: Record<string, unknown> };
-    expect(otaBody.command).toBe('ota');
-    expect(otaBody.params).toMatchObject({ sha256: 'd'.repeat(64), signingKeyId: 'fw-key-2026' });
+    expect(r.pushed).toBe(10); // OTA_PER_TICK cap
+    expect(bossSend).toHaveBeenCalledTimes(10);
+    const [queue, payload, opts] = bossSend.mock.calls[0];
+    expect(queue).toBe('fleet-ota-push');
+    expect(payload).toMatchObject({ deviceType: 'feeder', kennelId: 'home' });
+    expect((opts as { singletonKey: string }).singletonKey).toBe(
+      `home:${(payload as { deviceId: string }).deviceId}`,
+    );
 
     const devs = await (await fetch(`${base}/devices`)).json();
     const one = devs.devices.find((d: { deviceId: string }) => d.deviceId === 'f-0');
@@ -152,11 +206,38 @@ describe('fleetSweep + GET /devices', () => {
   });
 
   it('skips a device already reporting the target version', async () => {
-    publishCommand.mockClear();
+    bossSend.mockClear();
     await db.query(`UPDATE devices SET fw_version = '2.0.0' WHERE device_id LIKE 'f-%'`);
     const r = await fleetSweep();
     expect(r.pushed).toBe(0);
-    expect(publishCommand).not.toHaveBeenCalled();
+    expect(bossSend).not.toHaveBeenCalled();
+  });
+
+  it('otaPushHandler publishes the OTA command carried in the job payload', async () => {
+    publishCommand.mockClear();
+    const payload = {
+      kennelId: 'home',
+      deviceId: 'f-0',
+      deviceType: 'feeder',
+      fw: {
+        id: 'fw-1',
+        device_type: 'feeder',
+        version: '2.0.0',
+        url: 'https://x/2.bin',
+        sha256: 'd'.repeat(64),
+        signature: null,
+        signing_key_id: 'fw-key-2026',
+      },
+    };
+    await otaPushHandler([{ data: payload } as never]);
+    expect(publishCommand).toHaveBeenCalledTimes(1);
+    expect(publishCommand.mock.calls[0][3]).toBe('feeder'); // deviceType routed on the topic
+    const otaBody = publishCommand.mock.calls[0][2] as {
+      command: string;
+      params: Record<string, unknown>;
+    };
+    expect(otaBody.command).toBe('ota');
+    expect(otaBody.params).toMatchObject({ sha256: 'd'.repeat(64), signingKeyId: 'fw-key-2026' });
   });
 
   it('GET /health — version histogram + rollout progress + crash window', async () => {
