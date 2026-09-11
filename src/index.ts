@@ -8,6 +8,7 @@ import { config } from './config/index.js'; // loads + validates env, exits on a
 import { initializeDatabase, pool } from './database/index.js';
 import { closeRedis } from './redis.js';
 import { startQueue, stopQueue } from './jobs/queue.js';
+import { registerPartitionMaintenanceWorker } from './jobs/partitionMaintenance.js';
 import { runMigrations } from './database/migrate.js';
 import { runSeed } from './database/seed.js';
 import { startFeederMqtt, stopFeederMqtt } from './services/feederMqtt.js';
@@ -39,6 +40,7 @@ initializeDatabase()
   .then(() => startBreederEngine())
   .then(() => startQueue())
   .then(() => registerFleetOtaWorker())
+  .then(() => registerPartitionMaintenanceWorker())
   .catch((e) => {
     log.error({ err: e }, 'database/mqtt/queue boot failed');
   });

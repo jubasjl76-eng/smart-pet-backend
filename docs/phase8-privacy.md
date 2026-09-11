@@ -52,13 +52,34 @@ that has a row with `keep_days >= 1`.
 
 Classes: `access_log` (deletes `access_log` rows older than the window),
 `document` (deletes `documents` rows older than `created_at + window`, and their
-stored files, 500 per tick).
+stored files, 500 per tick), **`exception`** (Phase 20 — deletes `exceptions`
+rows older than the window, but only ones with `status = 'resolved'`; a
+still-open alert never disappears just because it's old).
 ponytail: one window for all document kinds; split into `document.contract` /
 `document.certificate` if the breeder needs different windows (a contract is
 often a 6-year legal keep).
 
 Buyer / animal / litter records are **not** on an automatic timer. Their
 removal is the explicit erasure path below.
+
+**Partitioned since Phase 20 (A12 #23)** — `access_log` and `exceptions` are
+range-partitioned by month (`015_partition_access_log.sql`,
+`016_partition_exceptions.sql`; mechanics in `src/db/partitions.ts`). For
+these two classes, `retentionSweep()` first tries a fast path — `DROP TABLE`
+on any whole calendar month that's entirely past the cutoff (and, for
+`exception`, has no non-resolved row) — before falling through to the same
+row-level `DELETE` as before for whatever that can't cover: the partial month
+straddling the exact cutoff timestamp, and a catch-all default partition. A
+monthly `pg-boss` schedule (`src/jobs/partitionMaintenance.ts` — same
+`pg-boss` infrastructure as the fleet OTA queue, `docs/phase9-fleet.md`)
+keeps the next couple months' partitions created ahead of time; it also runs
+once at boot so a fresh deployment doesn't wait for the 1st of the month.
+`notifications.exception_id`'s foreign key was dropped to make `exceptions`
+partitionable (Postgres requires a partitioned table's referenced key to
+include the partition column) — nothing ever `DELETE`s from `exceptions`
+today outside this sweep, so the `ON DELETE CASCADE` it carried had never
+fired; the relationship is now an application-level convention, not a DB
+constraint.
 
 ### `GET /api/breeder/privacy/retention`
 

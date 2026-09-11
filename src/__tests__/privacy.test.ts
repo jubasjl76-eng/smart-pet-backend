@@ -14,7 +14,9 @@ const db = new PGlite();
 vi.mock('../database/index.js', () => ({
   query: async (t: string, p?: unknown[]) => (await db.query(t, p as unknown[])).rows,
   queryOne: async (t: string, p?: unknown[]) => (await db.query(t, p as unknown[])).rows[0] ?? null,
-  execute: async (t: string, p?: unknown[]) => { await db.query(t, p as unknown[]); },
+  execute: async (t: string, p?: unknown[]) => {
+    await db.query(t, p as unknown[]);
+  },
   pool: {},
 }));
 
@@ -31,8 +33,17 @@ beforeAll(async () => {
     CREATE TABLE devices (device_id VARCHAR(255) PRIMARY KEY, kennel_id VARCHAR(255));
   `);
   await db.exec(BREEDER_DDL);
-  for (const f of ['004_vaccinations.sql', '005_buyer_comms.sql', '006_breeding_calendar.sql', // gitleaks:allow — migration filenames, not a key
-    '007_documents.sql', '009_access_log.sql', '010_retention.sql']) { // gitleaks:allow
+  for (const f of [
+    '004_vaccinations.sql',
+    '005_buyer_comms.sql',
+    '006_breeding_calendar.sql', // gitleaks:allow — migration filenames, not a key
+    '007_documents.sql',
+    '009_access_log.sql',
+    '010_retention.sql', // gitleaks:allow
+    '015_partition_access_log.sql',
+    '016_partition_exceptions.sql',
+  ]) {
+    // gitleaks:allow
     await db.exec(mig(f));
   }
 
@@ -40,11 +51,15 @@ beforeAll(async () => {
   app.use(express.json());
   app.use((req, _res, next) => {
     (req as unknown as { kennelId: string }).kennelId = 'home';
-    (req as unknown as { user: { id: string } }).user = { id: '00000000-0000-0000-0000-0000000000aa' };
+    (req as unknown as { user: { id: string } }).user = {
+      id: '00000000-0000-0000-0000-0000000000aa',
+    };
     next();
   });
   app.use(privacyRouter);
-  const srv = await new Promise<import('node:http').Server>((r) => { const s = app.listen(0, () => r(s)); });
+  const srv = await new Promise<import('node:http').Server>((r) => {
+    const s = app.listen(0, () => r(s));
+  });
   base = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
 });
 
@@ -67,14 +82,14 @@ describe('retentionSweep', () => {
     );
 
     const r = await retentionSweep();
-    expect(r).toEqual({ accessLog: 1, documents: 1 });
+    expect(r).toEqual({ accessLog: 1, documents: 1, exceptions: 0 });
 
     // untouched: recent home rows + the other kennel has no policy
     expect((await db.query(`SELECT id FROM access_log`)).rows).toHaveLength(2);
     expect((await db.query(`SELECT title FROM documents`)).rows).toEqual([{ title: 'new' }]);
 
     // idempotent
-    expect(await retentionSweep()).toEqual({ accessLog: 0, documents: 0 });
+    expect(await retentionSweep()).toEqual({ accessLog: 0, documents: 0, exceptions: 0 });
   });
 });
 
@@ -87,7 +102,9 @@ describe('GDPR export', () => {
     await db.query(`INSERT INTO documents (kennel_id, kind, subject_type, subject_id, title, body) VALUES
       ('home','contract','buyer','b1111111-1111-1111-1111-111111111111','Sale', 'x')`);
 
-    const res = await fetch(`${base}/export?subjectType=buyer&id=b1111111-1111-1111-1111-111111111111`);
+    const res = await fetch(
+      `${base}/export?subjectType=buyer&id=b1111111-1111-1111-1111-111111111111`,
+    );
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.buyer.email).toBe('aoife@example.com');
@@ -95,7 +112,9 @@ describe('GDPR export', () => {
     expect(body.documents).toHaveLength(1);
 
     // and it recorded the export
-    expect((await db.query(`SELECT action FROM access_log WHERE action = 'privacy.export'`)).rows).toHaveLength(1);
+    expect(
+      (await db.query(`SELECT action FROM access_log WHERE action = 'privacy.export'`)).rows,
+    ).toHaveLength(1);
   });
 
   it('rejects an unknown subject type', async () => {
@@ -107,7 +126,8 @@ describe('GDPR export', () => {
 describe('GDPR delete', () => {
   it('needs confirm:true', async () => {
     const res = await fetch(`${base}/delete`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ subjectType: 'buyer', id: 'b1111111-1111-1111-1111-111111111111' }),
     });
     expect(res.status).toBe(400);
@@ -121,17 +141,34 @@ describe('GDPR delete', () => {
        'b1111111-1111-1111-1111-111111111111','sold')`);
 
     const res = await fetch(`${base}/delete`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ subjectType: 'buyer', id: 'b1111111-1111-1111-1111-111111111111', confirm: true }),
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        subjectType: 'buyer',
+        id: 'b1111111-1111-1111-1111-111111111111',
+        confirm: true,
+      }),
     });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.deleted.buyers).toBe(1);
 
-    expect((await db.query(`SELECT id FROM buyers WHERE id = 'b1111111-1111-1111-1111-111111111111'`)).rows).toHaveLength(0);
-    expect((await db.query(`SELECT id FROM buyer_messages WHERE buyer_id = 'b1111111-1111-1111-1111-111111111111'`)).rows).toHaveLength(0);
-    const pup = (await db.query<{ buyer_id: string | null }>(
-      `SELECT buyer_id FROM puppies WHERE id = 'd1111111-1111-1111-1111-111111111111'`)).rows[0];
+    expect(
+      (await db.query(`SELECT id FROM buyers WHERE id = 'b1111111-1111-1111-1111-111111111111'`))
+        .rows,
+    ).toHaveLength(0);
+    expect(
+      (
+        await db.query(
+          `SELECT id FROM buyer_messages WHERE buyer_id = 'b1111111-1111-1111-1111-111111111111'`,
+        )
+      ).rows,
+    ).toHaveLength(0);
+    const pup = (
+      await db.query<{ buyer_id: string | null }>(
+        `SELECT buyer_id FROM puppies WHERE id = 'd1111111-1111-1111-1111-111111111111'`,
+      )
+    ).rows[0];
     expect(pup.buyer_id).toBeNull(); // puppy kept, just detached
   });
 
@@ -142,10 +179,18 @@ describe('GDPR delete', () => {
       WHERE id = 'c1111111-1111-1111-1111-111111111111'`);
 
     const res = await fetch(`${base}/delete`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ subjectType: 'animal', id: 'a1111111-1111-1111-1111-111111111111', confirm: true }),
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        subjectType: 'animal',
+        id: 'a1111111-1111-1111-1111-111111111111',
+        confirm: true,
+      }),
     });
     expect(res.status).toBe(409);
-    expect((await db.query(`SELECT id FROM animals WHERE id = 'a1111111-1111-1111-1111-111111111111'`)).rows).toHaveLength(1);
+    expect(
+      (await db.query(`SELECT id FROM animals WHERE id = 'a1111111-1111-1111-1111-111111111111'`))
+        .rows,
+    ).toHaveLength(1);
   });
 });
