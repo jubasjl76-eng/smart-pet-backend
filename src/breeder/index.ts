@@ -24,6 +24,7 @@ import breeding from './routes/breeding.js';
 import documents from './routes/documents.js';
 import privacy from './routes/privacy.js';
 import fleet, { registerFleetOtaWorker } from './routes/fleet.js';
+import flags from './routes/flags.js';
 import geo from './routes/geo.js';
 import websiteRoutes from './routes/website.js';
 import { streamHandler } from './stream.js';
@@ -56,6 +57,7 @@ export function mountBreeder(app: Express): void {
   app.use('/api/breeder/documents', ...guard, documents);
   app.use('/api/breeder/privacy', ...guard, privacy);
   app.use('/api/breeder/fleet', ...guard, fleet);
+  app.use('/api/breeder/flags', ...guard, flags);
   app.use('/api/breeder/geo', ...guard, geo);
 
   app.get('/api/breeder/health', (_req, res) => {

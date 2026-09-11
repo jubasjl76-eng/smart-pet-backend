@@ -14,7 +14,7 @@ export async function getFlags(): Promise<FlagMap> {
   if (cache && Date.now() - cache.at < TTL_MS) return cache.flags;
   try {
     const rows = await query<{ key: string; enabled: boolean }>(
-      'SELECT key, enabled FROM feature_flags'
+      'SELECT key, enabled FROM feature_flags',
     );
     const flags: FlagMap = {};
     for (const r of rows) flags[r.key] = r.enabled;
@@ -28,4 +28,10 @@ export async function getFlags(): Promise<FlagMap> {
 /** Drop the cache — call after an admin toggles a flag. */
 export function invalidateFlags(): void {
   cache = null;
+}
+
+/** True iff `key` has a row and it's enabled — false for an unknown key. For server-side gating (Phase 20). */
+export async function isFlagEnabled(key: string): Promise<boolean> {
+  const flags = await getFlags();
+  return flags[key] === true;
 }
