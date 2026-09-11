@@ -37,7 +37,8 @@ Called by the dashboard's "Publish to website" screen (task A7):
 
 A `published` change fires `fireRevalidate()` — a fire-and-forget POST to
 `WEBSITE_REVALIDATE_URL` with `WEBSITE_REVALIDATE_SECRET` (both optional; no-op
-when unset).
+when unset), behind a circuit breaker (Phase 20, A12 #5) so a dead endpoint
+stops eating a fetch + timeout on every website write.
 
 ## Seed
 

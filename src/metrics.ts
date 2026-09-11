@@ -12,6 +12,7 @@ import { collectDefaultMetrics, Registry, Histogram, Gauge } from 'prom-client';
 import type { Request, Response, NextFunction } from 'express';
 import { config } from './config/index.js';
 import { pool } from './database/index.js';
+import { listBreakers } from './circuitBreaker.js';
 import { VERSION } from './version.js';
 
 export const registry = new Registry();
@@ -36,6 +37,22 @@ new Gauge({
     this.set({ state: 'total' }, pool.totalCount);
     this.set({ state: 'idle' }, pool.idleCount);
     this.set({ state: 'waiting' }, pool.waitingCount);
+  },
+});
+
+// Circuit breaker state (Phase 20, A12 #5) — 0 closed, 0.5 half-open, 1 open.
+// Read on each scrape; opossum breakers created in channels.ts (Resend,
+// Twilio), feederMqtt.ts (MQTT publish), and revalidate.ts self-register via
+// circuitBreaker() (src/circuitBreaker.ts).
+new Gauge({
+  name: 'circuit_breaker_state',
+  help: 'Circuit breaker state by name: 0 closed, 0.5 half-open, 1 open',
+  labelNames: ['name'],
+  registers: [registry],
+  collect() {
+    for (const cb of listBreakers()) {
+      this.set({ name: cb.name }, cb.opened ? 1 : cb.halfOpen ? 0.5 : 0);
+    }
   },
 });
 

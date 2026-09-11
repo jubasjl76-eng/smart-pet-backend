@@ -5,6 +5,7 @@
  * All provider adapters are env-gated — no key → `suppressed` with a clear reason,
  * never a hard failure.
  */
+import { circuitBreaker } from '../../circuitBreaker.js';
 
 export type ChannelResult = {
   status: 'sent' | 'failed' | 'suppressed';
@@ -32,36 +33,40 @@ export function channelConfigured(channel: string): boolean {
   }
 }
 
-export async function sendEmail(to: string, subject: string, body: string): Promise<ChannelResult> {
-  const key = process.env.RESEND_API_KEY;
-  const from = process.env.NOTIFY_EMAIL_FROM;
-  if (!key || !from) {
-    return { status: 'suppressed', error: 'email not configured (RESEND_API_KEY / NOTIFY_EMAIL_FROM)' };
-  }
-  if (!to) return { status: 'suppressed', error: 'recipient has no email address' };
-  try {
+const resendBreaker = circuitBreaker(
+  'resend',
+  async (key: string, from: string, to: string, subject: string, body: string) => {
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
       body: JSON.stringify({ from, to, subject, text: body }),
     });
-    if (!r.ok) return { status: 'failed', error: `resend HTTP ${r.status}` };
-    const data = (await r.json().catch(() => ({}))) as { id?: string };
+    if (!r.ok) throw new Error(`resend HTTP ${r.status}`);
+    return (await r.json().catch(() => ({}))) as { id?: string };
+  },
+);
+
+export async function sendEmail(to: string, subject: string, body: string): Promise<ChannelResult> {
+  const key = process.env.RESEND_API_KEY;
+  const from = process.env.NOTIFY_EMAIL_FROM;
+  if (!key || !from) {
+    return {
+      status: 'suppressed',
+      error: 'email not configured (RESEND_API_KEY / NOTIFY_EMAIL_FROM)',
+    };
+  }
+  if (!to) return { status: 'suppressed', error: 'recipient has no email address' };
+  try {
+    const data = await resendBreaker.fire(key, from, to, subject, body);
     return { status: 'sent', ref: data.id };
   } catch (e) {
     return { status: 'failed', error: (e as Error).message };
   }
 }
 
-export async function sendSms(to: string, body: string): Promise<ChannelResult> {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  const from = process.env.TWILIO_FROM;
-  if (!sid || !token || !from) {
-    return { status: 'suppressed', error: 'sms not configured (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM)' };
-  }
-  if (!to) return { status: 'suppressed', error: 'recipient has no phone number' };
-  try {
+const twilioBreaker = circuitBreaker(
+  'twilio',
+  async (sid: string, token: string, from: string, to: string, body: string) => {
     const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
       method: 'POST',
       headers: {
@@ -70,8 +75,24 @@ export async function sendSms(to: string, body: string): Promise<ChannelResult> 
       },
       body: new URLSearchParams({ To: to, From: from, Body: body.slice(0, 1500) }).toString(),
     });
-    if (!r.ok) return { status: 'failed', error: `twilio HTTP ${r.status}` };
-    const data = (await r.json().catch(() => ({}))) as { sid?: string };
+    if (!r.ok) throw new Error(`twilio HTTP ${r.status}`);
+    return (await r.json().catch(() => ({}))) as { sid?: string };
+  },
+);
+
+export async function sendSms(to: string, body: string): Promise<ChannelResult> {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const from = process.env.TWILIO_FROM;
+  if (!sid || !token || !from) {
+    return {
+      status: 'suppressed',
+      error: 'sms not configured (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM)',
+    };
+  }
+  if (!to) return { status: 'suppressed', error: 'recipient has no phone number' };
+  try {
+    const data = await twilioBreaker.fire(sid, token, from, to, body);
     return { status: 'sent', ref: data.sid };
   } catch (e) {
     return { status: 'failed', error: (e as Error).message };
