@@ -30,6 +30,7 @@ import { streamHandler } from './stream.js';
 
 export { startBreederEngine, stopBreederEngine, engineTick } from './engine/index.js';
 export { initBreederSchema } from './schema.js';
+export { closeStreamRedis } from './stream.js';
 
 export function mountBreeder(app: Express): void {
   const guard = [auth, breederLimiter, withKennel];
