@@ -81,7 +81,12 @@ export async function listMonthlyPartitions(table: PartitionedTable): Promise<st
 }
 
 function monthOf(table: PartitionedTable, name: string): Date | null {
-  const m = name.match(new RegExp(`^${table}_(\\d{4})_(\\d{2})$`));
+  // Strip the known-safe prefix with a plain string op, then match the
+  // remainder against a fixed literal regex — no dynamic RegExp() built
+  // from a variable, which a partition name (however unlikely) could abuse.
+  const prefix = `${table}_`;
+  if (!name.startsWith(prefix)) return null;
+  const m = name.slice(prefix.length).match(/^(\d{4})_(\d{2})$/);
   return m ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 1)) : null;
 }
 
