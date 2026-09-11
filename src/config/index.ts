@@ -35,6 +35,20 @@ const schema = z.object({
   PG_PORT: envPort().default(5432),
   PG_DATABASE: z.string().optional(),
   PG_USER: z.string().default('postgres'),
+  // Pool sizing (Phase 20, A12 #1). Default 10 matches pg's own default
+  // (dev/local, unmanaged); staging/prod set PG_POOL_MAX from Terraform —
+  // floor(max_connections / instance count), with headroom.
+  PG_POOL_MAX: envInt().default(10),
+  PG_IDLE_TIMEOUT_MS: envInt().default(30_000),
+  // 0 = pg's own default of "wait forever" for a connection attempt — a real
+  // risk (a stuck attempt never frees the caller). 5s everywhere.
+  PG_CONNECTION_TIMEOUT_MS: envInt().default(5_000),
+  // Also set at the DB parameter-group level (defense in depth) once
+  // Terraform's staging/prod max_connections + statement_timeout land.
+  PG_STATEMENT_TIMEOUT_MS: envInt().default(30_000),
+  // pg-boss (src/jobs/queue.ts) opens its own separate pg.Pool — small on
+  // purpose, it's mostly idle between polls, not the app's main query load.
+  PG_BOSS_POOL_MAX: envInt().default(5),
 
   MQTT_URL: z.string().optional(),
   MQTT_BROKER: z.string().optional(),

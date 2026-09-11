@@ -37,6 +37,9 @@ new Gauge({
     this.set({ state: 'total' }, pool.totalCount);
     this.set({ state: 'idle' }, pool.idleCount);
     this.set({ state: 'waiting' }, pool.waitingCount);
+    // the configured ceiling (PG_POOL_MAX) — lets a dashboard/alert graph
+    // utilization (total/max) instead of just the raw counts (Phase 20, A12 #1).
+    this.set({ state: 'max' }, pool.options.max ?? 0);
   },
 });
 

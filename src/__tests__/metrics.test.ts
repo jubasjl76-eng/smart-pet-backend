@@ -8,6 +8,9 @@ describe('metrics registry', () => {
     const text = await registry.metrics();
     expect(text).toContain('process_cpu_user_seconds_total');
     expect(text).toContain('pg_pool_connections');
+    // Phase 20, A12 #1 — the configured ceiling (PG_POOL_MAX, default 10) alongside
+    // the live total/idle/waiting counts, so a dashboard can graph utilization.
+    expect(text).toMatch(/pg_pool_connections\{state="max"[^}]*\} 10/);
     expect(text).toContain('http_request_duration_seconds');
     expect(text).toContain('service="smart-pet-backend"');
     // resend/twilio/mqtt-publish/revalidate-webhook breakers self-register on

@@ -23,6 +23,11 @@ export function createPgBoss(overrides: Partial<ConstructorOptions> = {}): PgBos
     user: config.PG_USER,
     password: config.PG_PASSWORD,
     schema: 'pgboss',
+    // pg-boss builds its own pg.Pool from these options — without an
+    // explicit max it falls back to pg's own default (10), a previously
+    // invisible connection consumer alongside the app's main pool
+    // (Phase 20, A12 #1).
+    max: config.PG_BOSS_POOL_MAX,
     ...overrides,
   });
   boss.on('error', (err) => qlog.error({ err }, 'pg-boss error'));
