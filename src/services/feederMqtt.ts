@@ -98,6 +98,27 @@ function parseStatus(raw: Buffer): StatusPayload | null {
 }
 
 export async function applyStatus(p: StatusPayload): Promise<void> {
+  // Ordering guard (Phase 21, A11): a device journals status locally while
+  // disconnected and replays it on reconnect, and a broker replica has no
+  // shared state with its peers — either can hand `applyStatus` a message
+  // older than one already applied. `timestamp` is 0 only on an LWT (the
+  // broker publishing "offline" on the device's behalf, which has no wall
+  // clock of its own to stamp) — always let that one through rather than
+  // ordering it against real device timestamps, but don't let it move the
+  // watermark backwards for whatever arrives next.
+  if (p.timestamp > 0) {
+    const [row] = await query<{ last_status_ts: number | null }>(
+      `SELECT last_status_ts FROM devices WHERE device_id = $1`,
+      [p.deviceId],
+    );
+    if (row?.last_status_ts != null && p.timestamp <= row.last_status_ts) {
+      mlog.debug(
+        { deviceId: p.deviceId, timestamp: p.timestamp, last: row.last_status_ts },
+        'stale status dropped',
+      );
+      return;
+    }
+  }
   const online = p.status === 'online';
   const food = p.status === 'offline' || p.foodLevel === undefined ? null : p.foodLevel;
   await query(
@@ -111,6 +132,7 @@ export async function applyStatus(p: StatusPayload): Promise<void> {
        kennel_id = COALESCE(kennel_id, $5),
        fw_version = COALESCE($7, fw_version),
        fw_updated_at = CASE WHEN $7 IS NOT NULL AND $7 IS DISTINCT FROM fw_version THEN NOW() ELSE fw_updated_at END,
+       last_status_ts = CASE WHEN $8 > 0 THEN $8 ELSE last_status_ts END,
        updated_at = NOW()
      WHERE device_id = $6`,
     [
@@ -121,6 +143,7 @@ export async function applyStatus(p: StatusPayload): Promise<void> {
       p.kennelId,
       p.deviceId,
       p.fwVersion ?? null,
+      p.timestamp,
     ],
   );
   bus.emit(`status:${p.deviceId}`, p);
