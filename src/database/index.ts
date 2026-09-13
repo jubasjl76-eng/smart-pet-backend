@@ -31,6 +31,26 @@ const pool = new Pool({
   statement_timeout: config.PG_STATEMENT_TIMEOUT_MS,
 });
 
+// RDS read replica (Phase 21, A11/A12) — exports / growth-chart aggregation /
+// GDPR export are heavy, occasional reads that shouldn't compete with the
+// primary's transactional load. `PG_REPLICA_HOST` unset (dev/local, any env
+// without a replica) → `replicaPool` is null and queryReplica()/
+// queryOneReplica() below fall back to the primary pool — callers don't
+// need their own conditional.
+const replicaPool = config.PG_REPLICA_HOST
+  ? new Pool({
+      host: config.PG_REPLICA_HOST,
+      port: config.PG_PORT,
+      database: pgDatabase(),
+      user: config.PG_USER,
+      password: config.PG_PASSWORD,
+      max: config.PG_REPLICA_POOL_MAX,
+      idleTimeoutMillis: config.PG_IDLE_TIMEOUT_MS,
+      connectionTimeoutMillis: config.PG_CONNECTION_TIMEOUT_MS,
+      statement_timeout: config.PG_STATEMENT_TIMEOUT_MS,
+    })
+  : null;
+
 export async function initializeDatabase(): Promise<void> {
   dlog.info({ mode: BACKEND_MODE }, 'initializing PostgreSQL');
 
@@ -199,6 +219,25 @@ export async function queryOne<T>(text: string, params?: any[]): Promise<T | nul
 
 export async function execute(text: string, params?: any[]): Promise<void> {
   await pool.query(text, params);
+}
+
+/** True once queryReplica()/queryOneReplica() route to a real replica instead of falling back to the primary. */
+export function hasReadReplica(): boolean {
+  return replicaPool !== null;
+}
+
+export async function queryReplica<T>(text: string, params?: any[]): Promise<T[]> {
+  const result = await (replicaPool ?? pool).query(text, params);
+  return result.rows;
+}
+
+export async function queryOneReplica<T>(text: string, params?: any[]): Promise<T | null> {
+  const rows = await queryReplica<T>(text, params);
+  return rows[0] || null;
+}
+
+export async function closeReplicaPool(): Promise<void> {
+  await replicaPool?.end();
 }
 
 export { pool };

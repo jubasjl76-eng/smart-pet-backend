@@ -14,6 +14,11 @@ const db = new PGlite();
 vi.mock('../database/index.js', () => ({
   query: async (t: string, p?: unknown[]) => (await db.query(t, p as unknown[])).rows,
   queryOne: async (t: string, p?: unknown[]) => (await db.query(t, p as unknown[])).rows[0] ?? null,
+  // No replica in this test (matches an env with PG_REPLICA_HOST unset) —
+  // same PGlite instance, same fallback behavior as the real module.
+  queryReplica: async (t: string, p?: unknown[]) => (await db.query(t, p as unknown[])).rows,
+  queryOneReplica: async (t: string, p?: unknown[]) =>
+    (await db.query(t, p as unknown[])).rows[0] ?? null,
   execute: async (t: string, p?: unknown[]) => {
     await db.query(t, p as unknown[]);
   },
