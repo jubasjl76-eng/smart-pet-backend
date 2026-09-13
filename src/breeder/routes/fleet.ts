@@ -22,6 +22,15 @@ const T = ['breeder: fleet'];
 const OTA_PER_TICK = 10; // ponytail: flat cap; make it per-kennel if a fleet gets big
 
 // ── Firmware registry ──────────────────────────────────────────────────────
+// Phase 21 (A11 — OTA CDN hardening) scoped out a pull-based CDN-hosted
+// `latest.json` manifest per device-type+channel: devices already have a
+// reliable push channel (MQTT via fleetSweep()'s pg-boss queue, retry + DLQ,
+// Phase 20), and this backend has no S3-write capability at all today
+// (getStorage() is local-disk only) — building one just to publish a tiny
+// manifest, with no SDK-side consumer to poll it either, is a bigger lift
+// than the current fleet's scale justifies. Revisit if the push channel
+// ever proves unreliable in the field, or a device needs to self-check for
+// an update without waiting on the backend to notice it's online.
 router.post(
   '/firmware',
   apiRoute({
@@ -31,19 +40,29 @@ router.post(
     secure: true,
     summary: 'Register a firmware build.',
     request: {
-      body: z.object({
-        deviceType: z.string().min(1),
-        version: z.string().min(1),
-        url: z.string().min(1),
-        sha256: z.string().min(1),
-        channel: z.string().optional(),
-        signature: z.string().nullable().optional(),
-        signingKeyId: z.string().max(128).nullable().optional(),
-        provenance: z.record(z.string(), z.unknown()).nullable().optional(),
-        sizeBytes: z.coerce.number().nullable().optional(),
-        minVersion: z.string().nullable().optional(),
-        notes: z.string().nullable().optional(),
-      }),
+      body: z
+        .object({
+          deviceType: z.string().min(1),
+          version: z.string().min(1),
+          url: z.string().min(1),
+          sha256: z.string().min(1),
+          channel: z.string().optional(),
+          signature: z.string().nullable().optional(),
+          signingKeyId: z.string().max(128).nullable().optional(),
+          provenance: z.record(z.string(), z.unknown()).nullable().optional(),
+          sizeBytes: z.coerce.number().nullable().optional(),
+          minVersion: z.string().nullable().optional(),
+          notes: z.string().nullable().optional(),
+        })
+        // Immutable per-version path (Phase 21, A11 — OTA CDN hardening): the
+        // whole point of a version being part of the URL is that the object
+        // at that URL never changes, so a CDN edge can cache it forever. A
+        // plain string check, not a dynamic RegExp built from user input.
+        .refine((v) => v.url.includes(`/firmware/${v.deviceType}/${v.version}/`), {
+          message:
+            'url must be an immutable per-version path: .../firmware/<deviceType>/<version>/<file>',
+          path: ['url'],
+        }),
     },
     responses: { 201: { description: 'created' }, 409: { description: 'already exists' } },
   }),
