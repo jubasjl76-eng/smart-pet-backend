@@ -5,7 +5,7 @@
  */
 import './instrument.js'; // Sentry — must be the very first import (patches http/express/pg)
 import { config } from './config/index.js'; // loads + validates env, exits on a bad config
-import { initializeDatabase, pool } from './database/index.js';
+import { initializeDatabase, pool, closeReplicaPool } from './database/index.js';
 import { closeRedis } from './redis.js';
 import { startQueue, stopQueue } from './jobs/queue.js';
 import { registerPartitionMaintenanceWorker } from './jobs/partitionMaintenance.js';
@@ -67,6 +67,7 @@ async function shutdown(signal?: string): Promise<void> {
     await closeStreamRedis();
     await closeRedis();
     await pool.end().catch(() => {});
+    await closeReplicaPool().catch(() => {});
     clearTimeout(guard);
     log.info('shutdown complete');
     process.exit(0);

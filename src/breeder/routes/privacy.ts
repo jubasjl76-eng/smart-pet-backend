@@ -6,7 +6,7 @@
  */
 import { Router } from 'express';
 import { z } from '@jubasjl76-eng/shared';
-import { query, queryOne, execute } from '../../database/index.js';
+import { query, queryOne, execute, queryReplica, queryOneReplica } from '../../database/index.js';
 import { ah, bad } from '../http.js';
 import { apiRoute } from '../../openapi/index.js';
 import { getStorage } from '../../services/storage.js';
@@ -188,79 +188,82 @@ router.get(
       exportedAt: new Date().toISOString(),
     };
 
+    // GDPR export: several read-only queries assembling one bundle, nothing
+    // time-sensitive — routed to the read replica (Phase 21, A11/A12; falls
+    // back to the primary when no replica is configured).
     if (subjectType === 'buyer') {
-      const buyer = await queryOne(`SELECT * FROM buyers WHERE id = $1 AND kennel_id = $2`, [
+      const buyer = await queryOneReplica(`SELECT * FROM buyers WHERE id = $1 AND kennel_id = $2`, [
         id,
         k,
       ]);
       if (!buyer) return bad(res, 'Buyer not found', 404);
       bundle.buyer = buyer;
-      bundle.messages = await query(
+      bundle.messages = await queryReplica(
         `SELECT * FROM buyer_messages WHERE buyer_id = $1 ORDER BY created_at`,
         [id],
       );
-      bundle.updatePackSubscriptions = await query(
+      bundle.updatePackSubscriptions = await queryReplica(
         `SELECT * FROM update_pack_subscriptions WHERE buyer_id = $1`,
         [id],
       );
-      bundle.puppies = await query(
+      bundle.puppies = await queryReplica(
         `SELECT id, name, status, go_home_on FROM puppies WHERE buyer_id = $1 AND kennel_id = $2`,
         [id, k],
       );
-      bundle.documents = await query(
+      bundle.documents = await queryReplica(
         `SELECT id, kind, title, filename, created_at FROM documents
         WHERE kennel_id = $1 AND subject_type = 'buyer' AND subject_id = $2`,
         [k, id],
       );
-      bundle.accessLog = await query(
+      bundle.accessLog = await queryReplica(
         `SELECT id, action, ip, detail, at FROM access_log
         WHERE kennel_id = $1 AND subject_type = 'buyer' AND subject_id = $2 ORDER BY at`,
         [k, id],
       );
     } else if (subjectType === 'animal') {
-      const animal = await queryOne(`SELECT * FROM animals WHERE id = $1 AND kennel_id = $2`, [
-        id,
-        k,
-      ]);
+      const animal = await queryOneReplica(
+        `SELECT * FROM animals WHERE id = $1 AND kennel_id = $2`,
+        [id, k],
+      );
       if (!animal) return bad(res, 'Animal not found', 404);
       bundle.animal = animal;
-      bundle.weightReadings = await query(
+      bundle.weightReadings = await queryReplica(
         `SELECT * FROM weight_readings WHERE animal_id = $1 ORDER BY taken_at`,
         [id],
       );
-      bundle.vaccinationRecords = await query(
+      bundle.vaccinationRecords = await queryReplica(
         `SELECT * FROM vaccination_records WHERE animal_id = $1 ORDER BY due_on`,
         [id],
       );
-      bundle.heatCycles = await query(
+      bundle.heatCycles = await queryReplica(
         `SELECT * FROM heat_cycles WHERE animal_id = $1 ORDER BY started_on`,
         [id],
       );
-      bundle.litters = await query(
+      bundle.litters = await queryReplica(
         `SELECT id, name, status, whelped_at FROM litters WHERE dam_id = $1 OR sire_id = $1`,
         [id],
       );
-      bundle.documents = await query(
+      bundle.documents = await queryReplica(
         `SELECT id, kind, title, filename, created_at FROM documents
         WHERE kennel_id = $1 AND subject_type = 'animal' AND subject_id = $2`,
         [k, id],
       );
     } else {
-      const litter = await queryOne(`SELECT * FROM litters WHERE id = $1 AND kennel_id = $2`, [
-        id,
-        k,
-      ]);
+      const litter = await queryOneReplica(
+        `SELECT * FROM litters WHERE id = $1 AND kennel_id = $2`,
+        [id, k],
+      );
       if (!litter) return bad(res, 'Litter not found', 404);
       bundle.litter = litter;
-      bundle.puppies = await query(
+      bundle.puppies = await queryReplica(
         `SELECT * FROM puppies WHERE litter_id = $1 ORDER BY created_at`,
         [id],
       );
-      bundle.waitlist = await query(
+      bundle.waitlist = await queryReplica(
         `SELECT id, name, status, waitlist_rank FROM buyers WHERE wants_litter_id = $1`,
         [id],
       );
-      bundle.documents = await query(
+      bundle.documents = await queryReplica(
         `SELECT id, kind, title, filename, created_at FROM documents
         WHERE kennel_id = $1 AND subject_type = 'litter' AND subject_id = $2`,
         [k, id],

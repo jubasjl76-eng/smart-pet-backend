@@ -49,6 +49,14 @@ const schema = z.object({
   // pg-boss (src/jobs/queue.ts) opens its own separate pg.Pool — small on
   // purpose, it's mostly idle between polls, not the app's main query load.
   PG_BOSS_POOL_MAX: envInt().default(5),
+  // RDS read replica (Phase 21, A11/A12) for exports / growth-chart
+  // aggregation / GDPR export — heavy, occasional reads that shouldn't
+  // compete with the primary's transactional load. Unset (dev/local, and
+  // any env without a replica) → src/database/index.ts's queryReplica()
+  // falls back to the primary pool. Same master credentials as the primary
+  // (RDS read replicas share them); own small pool, mostly idle.
+  PG_REPLICA_HOST: z.string().optional(),
+  PG_REPLICA_POOL_MAX: envInt().default(5),
 
   MQTT_URL: z.string().optional(),
   MQTT_BROKER: z.string().optional(),
