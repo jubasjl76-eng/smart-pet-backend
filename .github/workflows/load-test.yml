@@ -1,0 +1,27 @@
+name: load-test
+
+# Manual only (hardening Phase 21, A12 #24) — this hits a real deployed
+# environment (staging by default), not something to run on every push.
+# LOAD_TEST_EMAIL/PASSWORD are an environment secret on `staging-load-test`
+# (create the GitHub Environment + a throwaway staging user first — see
+# OPERATOR-ACTIONS.md). Missing secrets just means authenticated_reads sees
+# 401s; infra_health still runs.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'Base URL under test.'
+        type: string
+        default: 'https://api-staging.smartpet.example' # placeholder — see OPERATOR-ACTIONS.md
+
+jobs:
+  k6:
+    environment: staging-load-test
+    uses: jubasjl76-eng/smart-pet-ci/.github/workflows/k6-load-test.yml@main
+    with:
+      script: k6/api-load-test.js
+      target-url: ${{ inputs.target_url }}
+    secrets:
+      LOAD_TEST_EMAIL: ${{ secrets.LOAD_TEST_EMAIL }}
+      LOAD_TEST_PASSWORD: ${{ secrets.LOAD_TEST_PASSWORD }}
