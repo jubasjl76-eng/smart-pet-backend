@@ -108,11 +108,21 @@ describe('firmware + rollout routes', () => {
   let fwId = '';
   let rolloutId = '';
 
+  it('rejects a url that is not an immutable per-version path (Phase 21, A11)', async () => {
+    const r = await post('/firmware', {
+      deviceType: 'feeder',
+      version: '1.4.0',
+      url: 'https://x/latest.bin', // not .../firmware/feeder/1.4.0/...
+      sha256: 'a'.repeat(64),
+    });
+    expect(r.status).toBe(400);
+  });
+
   it('publishes a build and rejects a duplicate version', async () => {
     const r = await post('/firmware', {
       deviceType: 'feeder',
       version: '1.4.0',
-      url: 'https://x/f-1.4.0.bin',
+      url: 'https://x/firmware/feeder/1.4.0/app.bin',
       sha256: 'a'.repeat(64),
       signingKeyId: 'fw-key-2026',
       provenance: { builder: 'gha', slsa: 3 },
@@ -127,7 +137,7 @@ describe('firmware + rollout routes', () => {
         await post('/firmware', {
           deviceType: 'feeder',
           version: '1.4.0',
-          url: 'https://x/again.bin',
+          url: 'https://x/firmware/feeder/1.4.0/again.bin',
           sha256: 'b'.repeat(64),
         })
       ).status,
@@ -152,7 +162,7 @@ describe('firmware + rollout routes', () => {
     const r2 = await post('/firmware', {
       deviceType: 'feeder',
       version: '1.5.0',
-      url: 'https://x/f-1.5.0.bin',
+      url: 'https://x/firmware/feeder/1.5.0/app.bin',
       sha256: 'c'.repeat(64),
     });
     const fw2 = (await r2.json()).firmware.id;
