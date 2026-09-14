@@ -101,6 +101,12 @@ const schema = z.object({
 
   // ── secret (AWS Secrets Manager at runtime; SOPS+age for git-committed non-prod) ──
   JWT_SECRET: z.string().min(1, 'JWT_SECRET is unset — refusing to boot'),
+  // Key rotation grace window (Phase 21, A12 #20) — the previous JWT_SECRET,
+  // kept only long enough for tokens it signed to expire (ACCESS_TTL, 12h
+  // default). New tokens are always signed with JWT_SECRET; this one is
+  // verification-only. Unset once the grace window closes — see
+  // runbooks/key-rotation.md.
+  JWT_SECRET_PREVIOUS: z.string().optional(),
   // Unset (dev/local) → src/redis.ts exports `redis: null`, every consumer
   // falls back to in-process/single-instance behavior (Phase 20).
   REDIS_URL: z.string().optional(),
@@ -117,6 +123,7 @@ export const config = loadConfig(schema, { name: 'backend' });
 
 export const SECRET_KEYS = [
   'JWT_SECRET',
+  'JWT_SECRET_PREVIOUS',
   'REDIS_URL',
   'PG_PASSWORD',
   'MQTT_PASSWORD',
