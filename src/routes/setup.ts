@@ -14,14 +14,22 @@ import { z } from '@jubasjl76-eng/shared';
 import { query, queryOne, execute } from '../database/index.js';
 import { apiRoute } from '../openapi/index.js';
 import { auth, type AuthRequest } from '../middleware/auth.js';
+import { ownerLimiter } from '../middleware/rateLimit.js';
 import { runSeed } from '../database/seed.js';
 
 const router = Router();
-router.use(auth);
+router.use(auth, ownerLimiter);
 const T = ['owner: setup'];
 
 function slugify(s: string): string {
-  return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'kennel';
+  return (
+    s
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40) || 'kennel'
+  );
 }
 
 async function theKennel(): Promise<any | null> {
@@ -35,106 +43,179 @@ async function canAdminKennel(req: AuthRequest, kennel: any | null): Promise<boo
   return kennel.owner_user_id === req.user.id || req.user.role === 'owner';
 }
 
-router.get('/status', apiRoute({ method: 'get', path: '/api/setup/status', tags: T, secure: true, summary: 'First-run setup progress (drives the wizard).', responses: { 200: { description: 'ok' } } }), async (req: AuthRequest, res: Response) => {
-  const kennel = await theKennel();
-  const kennelId = kennel?.slug ?? null;
-  const counts = kennelId
-    ? await queryOne<any>(
-        `SELECT
+router.get(
+  '/status',
+  apiRoute({
+    method: 'get',
+    path: '/api/setup/status',
+    tags: T,
+    secure: true,
+    summary: 'First-run setup progress (drives the wizard).',
+    responses: { 200: { description: 'ok' } },
+  }),
+  async (req: AuthRequest, res: Response) => {
+    const kennel = await theKennel();
+    const kennelId = kennel?.slug ?? null;
+    const counts = kennelId
+      ? await queryOne<any>(
+          `SELECT
            (SELECT COUNT(*) FROM pens    WHERE kennel_id = $1)::int AS pens,
            (SELECT COUNT(*) FROM animals WHERE kennel_id = $1)::int AS animals,
            (SELECT COUNT(*) FROM rules   WHERE kennel_id = $1)::int AS rules,
            (SELECT COUNT(*) FROM devices WHERE kennel_id = $1)::int AS devices`,
-        [kennelId]
-      )
-    : { pens: 0, animals: 0, rules: 0, devices: 0 };
+          [kennelId],
+        )
+      : { pens: 0, animals: 0, rules: 0, devices: 0 };
 
-  res.json({
-    setupComplete: !!kennel?.setup_complete,
-    canAdminister: await canAdminKennel(req, kennel),
-    kennel: kennel
-      ? { slug: kennel.slug, name: kennel.name, breedFocus: kennel.breed_focus, timezone: kennel.timezone }
-      : null,
-    steps: {
-      kennel: !!kennel,
-      pens: counts.pens > 0,
-      animals: counts.animals > 0,
-      rules: counts.rules > 0,
-      devices: counts.devices > 0,
+    res.json({
+      setupComplete: !!kennel?.setup_complete,
+      canAdminister: await canAdminKennel(req, kennel),
+      kennel: kennel
+        ? {
+            slug: kennel.slug,
+            name: kennel.name,
+            breedFocus: kennel.breed_focus,
+            timezone: kennel.timezone,
+          }
+        : null,
+      steps: {
+        kennel: !!kennel,
+        pens: counts.pens > 0,
+        animals: counts.animals > 0,
+        rules: counts.rules > 0,
+        devices: counts.devices > 0,
+      },
+      counts,
+    });
+  },
+);
+
+router.post(
+  '/kennel',
+  apiRoute({
+    method: 'post',
+    path: '/api/setup/kennel',
+    tags: T,
+    secure: true,
+    summary: 'Create / update THE kennel.',
+    request: {
+      body: z.object({
+        name: z.string().optional(),
+        breedFocus: z.string().optional(),
+        timezone: z.string().optional(),
+      }),
     },
-    counts,
-  });
-});
+    responses: {
+      200: { description: 'updated' },
+      201: { description: 'created' },
+      403: { description: 'not the owner' },
+    },
+  }),
+  async (req: AuthRequest, res: Response) => {
+    const kennel = await theKennel();
+    if (!(await canAdminKennel(req, kennel))) {
+      res.status(403).json({ error: 'Only the kennel owner can do this' });
+      return;
+    }
+    const name = String(req.body?.name || '').trim();
+    if (!name) {
+      res.status(400).json({ error: 'name is required' });
+      return;
+    }
+    const breedFocus = req.body?.breedFocus ? String(req.body.breedFocus).trim() : null;
+    const timezone = req.body?.timezone ? String(req.body.timezone).trim() : 'UTC';
 
-router.post('/kennel', apiRoute({ method: 'post', path: '/api/setup/kennel', tags: T, secure: true, summary: 'Create / update THE kennel.', request: { body: z.object({ name: z.string().optional(), breedFocus: z.string().optional(), timezone: z.string().optional() }) }, responses: { 200: { description: 'updated' }, 201: { description: 'created' }, 403: { description: 'not the owner' } } }), async (req: AuthRequest, res: Response) => {
-  const kennel = await theKennel();
-  if (!(await canAdminKennel(req, kennel))) {
-    res.status(403).json({ error: 'Only the kennel owner can do this' });
-    return;
-  }
-  const name = String(req.body?.name || '').trim();
-  if (!name) {
-    res.status(400).json({ error: 'name is required' });
-    return;
-  }
-  const breedFocus = req.body?.breedFocus ? String(req.body.breedFocus).trim() : null;
-  const timezone = req.body?.timezone ? String(req.body.timezone).trim() : 'UTC';
-
-  let row: any;
-  if (!kennel) {
-    const slug = process.env.BREEDER_KENNEL_SLUG || slugify(name);
-    row = await queryOne<any>(
-      `INSERT INTO kennels (slug, name, owner_user_id, breed_focus, timezone)
+    let row: any;
+    if (!kennel) {
+      const slug = process.env.BREEDER_KENNEL_SLUG || slugify(name);
+      row = await queryOne<any>(
+        `INSERT INTO kennels (slug, name, owner_user_id, breed_focus, timezone)
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [slug, name, req.user!.id, breedFocus, timezone]
-    );
-  } else {
-    row = await queryOne<any>(
-      `UPDATE kennels SET name = $2, breed_focus = $3, timezone = $4,
+        [slug, name, req.user!.id, breedFocus, timezone],
+      );
+    } else {
+      row = await queryOne<any>(
+        `UPDATE kennels SET name = $2, breed_focus = $3, timezone = $4,
               owner_user_id = COALESCE(owner_user_id, $5)
         WHERE id = $1 RETURNING *`,
-      [kennel.id, name, breedFocus, timezone, req.user!.id]
+        [kennel.id, name, breedFocus, timezone, req.user!.id],
+      );
+    }
+    // bind every user with no kennel to this one (single-operation model)
+    await execute(`UPDATE users SET kennel_id = $1 WHERE kennel_id IS NULL`, [row.slug]);
+    await execute(`UPDATE users SET kennel_id = $1 WHERE id = $2`, [row.slug, req.user!.id]);
+
+    res.status(kennel ? 200 : 201).json({
+      kennel: {
+        slug: row.slug,
+        name: row.name,
+        breedFocus: row.breed_focus,
+        timezone: row.timezone,
+      },
+    });
+  },
+);
+
+router.post(
+  '/complete',
+  apiRoute({
+    method: 'post',
+    path: '/api/setup/complete',
+    tags: T,
+    secure: true,
+    summary: 'Mark setup finished.',
+    responses: {
+      200: { description: 'ok' },
+      400: { description: 'no kennel yet' },
+      403: { description: 'not the owner' },
+    },
+  }),
+  async (req: AuthRequest, res: Response) => {
+    const kennel = await theKennel();
+    if (!kennel) {
+      res.status(400).json({ error: 'Create the kennel first' });
+      return;
+    }
+    if (!(await canAdminKennel(req, kennel))) {
+      res.status(403).json({ error: 'Only the kennel owner can do this' });
+      return;
+    }
+    await execute(
+      `UPDATE kennels SET setup_complete = true, setup_completed_at = NOW() WHERE id = $1`,
+      [kennel.id],
     );
-  }
-  // bind every user with no kennel to this one (single-operation model)
-  await execute(`UPDATE users SET kennel_id = $1 WHERE kennel_id IS NULL`, [row.slug]);
-  await execute(`UPDATE users SET kennel_id = $1 WHERE id = $2`, [row.slug, req.user!.id]);
+    res.json({ setupComplete: true });
+  },
+);
 
-  res.status(kennel ? 200 : 201).json({
-    kennel: { slug: row.slug, name: row.name, breedFocus: row.breed_focus, timezone: row.timezone },
-  });
-});
-
-router.post('/complete', apiRoute({ method: 'post', path: '/api/setup/complete', tags: T, secure: true, summary: 'Mark setup finished.', responses: { 200: { description: 'ok' }, 400: { description: 'no kennel yet' }, 403: { description: 'not the owner' } } }), async (req: AuthRequest, res: Response) => {
-  const kennel = await theKennel();
-  if (!kennel) {
-    res.status(400).json({ error: 'Create the kennel first' });
-    return;
-  }
-  if (!(await canAdminKennel(req, kennel))) {
-    res.status(403).json({ error: 'Only the kennel owner can do this' });
-    return;
-  }
-  await execute(
-    `UPDATE kennels SET setup_complete = true, setup_completed_at = NOW() WHERE id = $1`,
-    [kennel.id]
-  );
-  res.json({ setupComplete: true });
-});
-
-router.post('/seed-demo', apiRoute({ method: 'post', path: '/api/setup/seed-demo', tags: T, secure: true, summary: 'One-shot demo seed (pens + dam + sire + preset rules).', responses: { 200: { description: 'ok' }, 400: { description: 'no kennel yet' }, 403: { description: 'not the owner' } } }), async (req: AuthRequest, res: Response) => {
-  const kennel = await theKennel();
-  if (!kennel) {
-    res.status(400).json({ error: 'Create the kennel first' });
-    return;
-  }
-  if (!(await canAdminKennel(req, kennel))) {
-    res.status(403).json({ error: 'Only the kennel owner can do this' });
-    return;
-  }
-  // Same seed as `npm run seed`: demo animals + the full console kennel.
-  const result = await runSeed({ demo: true, console: true });
-  res.json({ seeded: result });
-});
+router.post(
+  '/seed-demo',
+  apiRoute({
+    method: 'post',
+    path: '/api/setup/seed-demo',
+    tags: T,
+    secure: true,
+    summary: 'One-shot demo seed (pens + dam + sire + preset rules).',
+    responses: {
+      200: { description: 'ok' },
+      400: { description: 'no kennel yet' },
+      403: { description: 'not the owner' },
+    },
+  }),
+  async (req: AuthRequest, res: Response) => {
+    const kennel = await theKennel();
+    if (!kennel) {
+      res.status(400).json({ error: 'Create the kennel first' });
+      return;
+    }
+    if (!(await canAdminKennel(req, kennel))) {
+      res.status(403).json({ error: 'Only the kennel owner can do this' });
+      return;
+    }
+    // Same seed as `npm run seed`: demo animals + the full console kennel.
+    const result = await runSeed({ demo: true, console: true });
+    res.json({ seeded: result });
+  },
+);
 
 export default router;

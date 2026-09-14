@@ -64,3 +64,15 @@ export const breederLimiter = limiter({
   keyPrefix: 'breeder',
   keyGenerator: (req: Request) => (req as AuthRequest).user?.id ?? ipKeyGenerator(req.ip ?? ''),
 });
+
+/** ~600/min per authenticated user — the owner-app surface (/api/devices,
+ * /api/schedules, /api/events, /api/setup, /api/users, /api/pet, /api/stats,
+ * /api/admin/ping). Same shape as breederLimiter; a separate instance (own
+ * Redis key prefix) because this is a different product surface — not
+ * meant to share one budget with the breeder console. */
+export const ownerLimiter = limiter({
+  windowMs: 60_000,
+  limit: 600,
+  keyPrefix: 'owner',
+  keyGenerator: (req: Request) => (req as AuthRequest).user?.id ?? ipKeyGenerator(req.ip ?? ''),
+});

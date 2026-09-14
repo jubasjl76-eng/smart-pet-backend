@@ -20,7 +20,7 @@ import { auth, ownerOnly, adminOnly } from './middleware/auth.js';
 import { query, queryOne } from './database/index.js';
 import { isFeederMqttConnected } from './services/feederMqtt.js';
 import { redis, redisHealthy } from './redis.js';
-import { authLimiter } from './middleware/rateLimit.js';
+import { authLimiter, ownerLimiter } from './middleware/rateLimit.js';
 import { mountBreeder } from './breeder/index.js';
 import { getFlags } from './services/flags.js';
 import { buildOpenApiDoc, docsHtml } from './openapi/index.js';
@@ -168,15 +168,15 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
   app.use('/api/auth', authLimiter, authRoutes);
   app.use('/api/setup', setupRoutes);
   app.use('/api/users', userRoutes);
-  app.use('/api/devices', auth, ownerOnly, deviceRoutes);
-  app.use('/api/schedules', auth, ownerOnly, scheduleRoutes);
-  app.use('/api/events', auth, ownerOnly, eventRoutes);
+  app.use('/api/devices', auth, ownerOnly, ownerLimiter, deviceRoutes);
+  app.use('/api/schedules', auth, ownerOnly, ownerLimiter, scheduleRoutes);
+  app.use('/api/events', auth, ownerOnly, ownerLimiter, eventRoutes);
 
-  app.get('/api/admin/ping', auth, adminOnly, (req: Request, res: Response) => {
+  app.get('/api/admin/ping', auth, adminOnly, ownerLimiter, (req: Request, res: Response) => {
     res.json({ ok: true, role: (req as { user?: { role?: string } }).user?.role });
   });
 
-  app.get('/api/pet', auth, async (req: Request, res: Response) => {
+  app.get('/api/pet', auth, ownerLimiter, async (req: Request, res: Response) => {
     const userId = (req as { user?: { id?: string } }).user?.id;
     try {
       const pet = await queryOne<{ id: string; name: string }>(
@@ -189,7 +189,7 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
     }
   });
 
-  app.put('/api/pet', auth, async (req: Request, res: Response) => {
+  app.put('/api/pet', auth, ownerLimiter, async (req: Request, res: Response) => {
     const userId = (req as { user?: { id?: string } }).user?.id;
     const name = String(req.body?.name || '').trim();
     if (!name) {
@@ -221,7 +221,7 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
     }
   });
 
-  app.get('/api/stats', auth, ownerOnly, async (req: Request, res: Response) => {
+  app.get('/api/stats', auth, ownerOnly, ownerLimiter, async (req: Request, res: Response) => {
     const userId = (req as { user?: { id?: string } }).user?.id;
     try {
       const devices = await query<{ device_type: string }>(
