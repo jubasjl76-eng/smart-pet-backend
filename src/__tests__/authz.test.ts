@@ -9,7 +9,15 @@ vi.mock('../database/index.js', () => ({
 }));
 
 import { queryOne, execute } from '../database/index.js';
-import { adminOnly, auth, generateToken, ownerOnly, type AuthRequest } from '../middleware/auth.js';
+import {
+  adminOnly,
+  auth,
+  generateToken,
+  kidFor,
+  ownerOnly,
+  resolveVerificationSecret,
+  type AuthRequest,
+} from '../middleware/auth.js';
 import { deviceAuth, parseDeviceBasic, parseDeviceUsername } from '../middleware/deviceAuth.js';
 import { canAdmin, isLocalRegisterAllowed, isOwner, mapRole } from '../identity/roles.js';
 import { register } from '../controllers/authController.js';
@@ -100,7 +108,8 @@ describe('owner vs staff middleware', () => {
 
 describe('device credentials', () => {
   it('parses device:<id> Basic auth', () => {
-    const header = 'Basic ' + Buffer.from('device:feeder-sim-001:unit-test-secret').toString('base64');
+    const header =
+      'Basic ' + Buffer.from('device:feeder-sim-001:unit-test-secret').toString('base64');
     expect(parseDeviceBasic(header)).toEqual({
       username: 'device:feeder-sim-001',
       password: 'unit-test-secret',
@@ -159,14 +168,22 @@ describe('register', () => {
 
   it('is closed off localhost', async () => {
     const res = mockRes();
-    await register({ ip: '203.0.113.5', hostname: 'example.com', body: { email: 'a@b.c', password: 'secret1', name: 'A' } } as any, res);
+    await register(
+      {
+        ip: '203.0.113.5',
+        hostname: 'example.com',
+        body: { email: 'a@b.c', password: 'secret1', name: 'A' },
+      } as any,
+      res,
+    );
     expect(res.statusCode).toBe(403);
   });
 
   it('never mints staff', async () => {
     vi.mocked(queryOne)
       .mockResolvedValueOnce(null) // existing-email check
-      .mockResolvedValueOnce({     // read-back of the new user
+      .mockResolvedValueOnce({
+        // read-back of the new user
         id: 'new-owner',
         email: 'a@b.c',
         name: 'A',
@@ -183,7 +200,7 @@ describe('register', () => {
         headers: {},
         body: { email: 'a@b.c', password: 'secret1', name: 'A', role: 'staff' },
       } as any,
-      res
+      res,
     );
     expect(res.statusCode).toBe(201);
     expect(res.body.user.role).toBe('owner');
@@ -211,5 +228,56 @@ describe('auth middleware maps DB role user → owner', () => {
     await auth(req, res, next);
     expect(next).toHaveBeenCalled();
     expect(req.user.role).toBe('owner');
+  });
+});
+
+// JWT key rotation (Phase 21, A12 #20). resolveVerificationSecret is pure
+// (given the kid + current/previous secrets, not read from config), so the
+// interesting branch logic is tested directly rather than by mutating the
+// (frozen) config singleton or juggling module resets.
+describe('JWT key rotation', () => {
+  const current = 'current-secret';
+  const previous = 'previous-secret';
+
+  it('resolves the current key when the kid is absent (pre-rotation token format)', () => {
+    expect(resolveVerificationSecret(undefined, current, previous)).toBe(current);
+  });
+
+  it('resolves the current key when the kid matches it', () => {
+    expect(resolveVerificationSecret(kidFor(current), current, previous)).toBe(current);
+  });
+
+  it('resolves the previous key during its grace window', () => {
+    expect(resolveVerificationSecret(kidFor(previous), current, previous)).toBe(previous);
+  });
+
+  it('rejects the previous key once the grace window closes (no previous secret given)', () => {
+    expect(resolveVerificationSecret(kidFor(previous), current, undefined)).toBeNull();
+  });
+
+  it('rejects a kid matching neither key', () => {
+    expect(resolveVerificationSecret('deadbeef', current, previous)).toBeNull();
+  });
+
+  it('generateToken embeds a kid derived from the current secret', () => {
+    const token = generateToken('u1', 'user');
+    const header = jwt.decode(token, { complete: true })!.header as { kid?: string };
+    expect(header.kid).toBe(kidFor(process.env.JWT_SECRET!));
+  });
+
+  it('auth middleware still accepts a kid-less token (pre-rotation format) against the current secret', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      id: 'u1',
+      email: 'o@x.io',
+      name: 'O',
+      role: 'user',
+    });
+    const legacyToken = jwt.sign({ userId: 'u1', role: 'owner' }, process.env.JWT_SECRET!); // no keyid
+    const req: any = { headers: { authorization: `Bearer ${legacyToken}` } };
+    const res = mockRes();
+    const next = vi.fn();
+    await auth(req, res, next);
+    expect(next).toHaveBeenCalled();
+    expect(req.user.id).toBe('u1');
   });
 });

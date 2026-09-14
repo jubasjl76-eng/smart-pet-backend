@@ -20,7 +20,7 @@ import { auth, ownerOnly, adminOnly } from './middleware/auth.js';
 import { query, queryOne } from './database/index.js';
 import { isFeederMqttConnected } from './services/feederMqtt.js';
 import { redis, redisHealthy } from './redis.js';
-import { authLimiter } from './middleware/rateLimit.js';
+import { authLimiter, ownerLimiter } from './middleware/rateLimit.js';
 import { mountBreeder } from './breeder/index.js';
 import { getFlags } from './services/flags.js';
 import { buildOpenApiDoc, docsHtml } from './openapi/index.js';
@@ -168,6 +168,13 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
   app.use('/api/auth', authLimiter, authRoutes);
   app.use('/api/setup', setupRoutes);
   app.use('/api/users', userRoutes);
+  // ownerLimiter as its own statement, scoped to the whole owner-app surface
+  // and ahead of every auth/ownerOnly/adminOnly mount below — the limiter
+  // must shed excess requests before any auth/authorization work runs.
+  app.use(
+    ['/api/devices', '/api/schedules', '/api/events', '/api/admin/ping', '/api/pet', '/api/stats'],
+    ownerLimiter,
+  );
   app.use('/api/devices', auth, ownerOnly, deviceRoutes);
   app.use('/api/schedules', auth, ownerOnly, scheduleRoutes);
   app.use('/api/events', auth, ownerOnly, eventRoutes);
