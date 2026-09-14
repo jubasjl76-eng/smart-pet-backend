@@ -18,7 +18,8 @@ import { ownerLimiter } from '../middleware/rateLimit.js';
 import { runSeed } from '../database/seed.js';
 
 const router = Router();
-router.use(auth, ownerLimiter);
+router.use(ownerLimiter);
+router.use(auth);
 const T = ['owner: setup'];
 
 function slugify(s: string): string {

@@ -19,9 +19,10 @@ import { createInvite, listInvites, revokeInvite } from '../auth/invites.js';
 import { revokeAllForUser } from '../auth/tokens.js';
 
 const router = Router();
-// ownerLimiter before ownerOnly: the limiter must shed excess requests
-// before the authorization check runs, not after.
-router.use(auth, ownerLimiter, ownerOnly);
+// ownerLimiter as its own statement, ahead of auth/ownerOnly: the limiter
+// must shed excess requests before any authorization work runs.
+router.use(ownerLimiter);
+router.use(auth, ownerOnly);
 const T = ['owner: users'];
 
 async function callerKennel(req: AuthRequest): Promise<string> {
