@@ -74,6 +74,7 @@ beforeAll(async () => {
   `);
   await db.exec(readFileSync(join(M, '011_fleet_firmware.sql'), 'utf8'));
   await db.exec(readFileSync(join(M, '014_ota_provenance.sql'), 'utf8'));
+  await db.exec(readFileSync(join(M, '018_signing_key_revocation.sql'), 'utf8'));
 
   const app = express();
   app.use(express.json());
@@ -261,5 +262,73 @@ describe('fleetSweep + GET /devices', () => {
 
     expect(h.crashes).toMatchObject({ windowDays: 30, totalDevices: 16, crashFreeDevices: 16 });
     expect(Array.isArray(h.crashes.byVersion)).toBe(true);
+  });
+});
+
+// Phase 21, A12 #20 — key-rotation drills. A separate key from 'fw-key-2026'
+// (used throughout the suite above) so revoking it here doesn't disturb
+// those fixtures.
+describe('signing-key revocation', () => {
+  const REVOKE_KEY = 'fw-key-revoke-test';
+
+  it('lists nothing revoked by default', async () => {
+    const r = await (await fetch(`${base}/signing-keys`)).json();
+    expect(r.revoked).toEqual([]);
+  });
+
+  it('blocks registering a build signed with a revoked key', async () => {
+    await post(`/signing-keys/${REVOKE_KEY}/revoke`, { reason: 'drill' });
+    const r = await post('/firmware', {
+      deviceType: 'door',
+      version: '1.0.0',
+      url: 'https://x/firmware/door/1.0.0/app.bin',
+      sha256: 'e'.repeat(64),
+      signingKeyId: REVOKE_KEY,
+    });
+    expect(r.status).toBe(403);
+  });
+
+  it('blocks starting a rollout for firmware already signed with a revoked key', async () => {
+    const fw = (
+      await db.query<{ id: string }>(
+        `INSERT INTO firmware (device_type, version, url, sha256, signing_key_id)
+         VALUES ('door','0.9.0','https://x/firmware/door/0.9.0/app.bin',$1,$2) RETURNING id`,
+        ['f'.repeat(64), REVOKE_KEY],
+      )
+    ).rows[0];
+    const r = await post('/rollouts', { firmwareId: fw.id });
+    expect(r.status).toBe(403);
+  });
+
+  it('blocks otaPushHandler from publishing a build signed with a revoked key', async () => {
+    publishCommand.mockClear();
+    const payload = {
+      kennelId: 'home',
+      deviceId: 'door-revoke-test',
+      deviceType: 'door',
+      fw: {
+        id: 'fw-revoked',
+        device_type: 'door',
+        version: '0.9.0',
+        url: 'https://x/firmware/door/0.9.0/app.bin',
+        sha256: 'f'.repeat(64),
+        signature: null,
+        signing_key_id: REVOKE_KEY,
+      },
+    };
+    await expect(otaPushHandler([{ data: payload } as never])).rejects.toThrow(/revoked/);
+    expect(publishCommand).not.toHaveBeenCalled();
+  });
+
+  it('un-revoking lets a build with that key register again', async () => {
+    await fetch(`${base}/signing-keys/${REVOKE_KEY}/revoke`, { method: 'DELETE' });
+    const r = await post('/firmware', {
+      deviceType: 'door',
+      version: '1.0.1',
+      url: 'https://x/firmware/door/1.0.1/app.bin',
+      sha256: 'a1'.repeat(32),
+      signingKeyId: REVOKE_KEY,
+    });
+    expect(r.status).toBe(201);
   });
 });
