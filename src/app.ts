@@ -168,21 +168,22 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
   app.use('/api/auth', authLimiter, authRoutes);
   app.use('/api/setup', setupRoutes);
   app.use('/api/users', userRoutes);
-  // ownerLimiter as its own statement, ahead of auth/ownerOnly/adminOnly: the
-  // limiter must shed excess requests before any authorization work runs.
-  app.use('/api/devices', ownerLimiter);
+  // ownerLimiter as its own statement, scoped to the whole owner-app surface
+  // and ahead of every auth/ownerOnly/adminOnly mount below — the limiter
+  // must shed excess requests before any auth/authorization work runs.
+  app.use(
+    ['/api/devices', '/api/schedules', '/api/events', '/api/admin/ping', '/api/pet', '/api/stats'],
+    ownerLimiter,
+  );
   app.use('/api/devices', auth, ownerOnly, deviceRoutes);
-  app.use('/api/schedules', ownerLimiter);
   app.use('/api/schedules', auth, ownerOnly, scheduleRoutes);
-  app.use('/api/events', ownerLimiter);
   app.use('/api/events', auth, ownerOnly, eventRoutes);
 
-  app.use('/api/admin/ping', ownerLimiter);
   app.get('/api/admin/ping', auth, adminOnly, (req: Request, res: Response) => {
     res.json({ ok: true, role: (req as { user?: { role?: string } }).user?.role });
   });
 
-  app.get('/api/pet', auth, ownerLimiter, async (req: Request, res: Response) => {
+  app.get('/api/pet', auth, async (req: Request, res: Response) => {
     const userId = (req as { user?: { id?: string } }).user?.id;
     try {
       const pet = await queryOne<{ id: string; name: string }>(
@@ -195,7 +196,7 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
     }
   });
 
-  app.put('/api/pet', auth, ownerLimiter, async (req: Request, res: Response) => {
+  app.put('/api/pet', auth, async (req: Request, res: Response) => {
     const userId = (req as { user?: { id?: string } }).user?.id;
     const name = String(req.body?.name || '').trim();
     if (!name) {
@@ -227,7 +228,6 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
     }
   });
 
-  app.use('/api/stats', ownerLimiter);
   app.get('/api/stats', auth, ownerOnly, async (req: Request, res: Response) => {
     const userId = (req as { user?: { id?: string } }).user?.id;
     try {
