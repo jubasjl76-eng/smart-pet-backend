@@ -22,8 +22,13 @@ router.use(auth, ownerLimiter);
 const T = ['owner: setup'];
 
 function slugify(s: string): string {
+  // Bound the input before it ever reaches a regex — the caller passes an
+  // unvalidated-length request field, and running these patterns against an
+  // attacker-supplied multi-megabyte string is needless CPU work regardless
+  // of the patterns themselves being linear (CodeQL js/polynomial-redos).
   return (
     s
+      .slice(0, 200)
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9]+/g, '-')

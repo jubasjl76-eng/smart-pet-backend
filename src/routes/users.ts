@@ -19,7 +19,9 @@ import { createInvite, listInvites, revokeInvite } from '../auth/invites.js';
 import { revokeAllForUser } from '../auth/tokens.js';
 
 const router = Router();
-router.use(auth, ownerOnly, ownerLimiter);
+// ownerLimiter before ownerOnly: the limiter must shed excess requests
+// before the authorization check runs, not after.
+router.use(auth, ownerLimiter, ownerOnly);
 const T = ['owner: users'];
 
 async function callerKennel(req: AuthRequest): Promise<string> {
@@ -68,7 +70,9 @@ router.post(
       .trim()
       .toLowerCase();
     const role = req.body?.role === 'owner' ? 'owner' : 'staff';
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    // RFC 5321 caps an address at 254 chars — reject anything longer before
+    // it reaches the regex (CodeQL js/polynomial-redos: unbounded input length).
+    if (email.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
       res.status(400).json({ error: 'A valid email is required' });
       return;
     }

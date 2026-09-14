@@ -168,11 +168,14 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
   app.use('/api/auth', authLimiter, authRoutes);
   app.use('/api/setup', setupRoutes);
   app.use('/api/users', userRoutes);
-  app.use('/api/devices', auth, ownerOnly, ownerLimiter, deviceRoutes);
-  app.use('/api/schedules', auth, ownerOnly, ownerLimiter, scheduleRoutes);
-  app.use('/api/events', auth, ownerOnly, ownerLimiter, eventRoutes);
+  // ownerLimiter before ownerOnly/adminOnly: the limiter must shed excess
+  // requests before the authorization check runs, not after — otherwise an
+  // unlimited number of requests can hit the authorization logic itself.
+  app.use('/api/devices', auth, ownerLimiter, ownerOnly, deviceRoutes);
+  app.use('/api/schedules', auth, ownerLimiter, ownerOnly, scheduleRoutes);
+  app.use('/api/events', auth, ownerLimiter, ownerOnly, eventRoutes);
 
-  app.get('/api/admin/ping', auth, adminOnly, ownerLimiter, (req: Request, res: Response) => {
+  app.get('/api/admin/ping', auth, ownerLimiter, adminOnly, (req: Request, res: Response) => {
     res.json({ ok: true, role: (req as { user?: { role?: string } }).user?.role });
   });
 
@@ -221,7 +224,7 @@ export function buildApp(opts: BuildAppOptions = {}): Express {
     }
   });
 
-  app.get('/api/stats', auth, ownerOnly, ownerLimiter, async (req: Request, res: Response) => {
+  app.get('/api/stats', auth, ownerLimiter, ownerOnly, async (req: Request, res: Response) => {
     const userId = (req as { user?: { id?: string } }).user?.id;
     try {
       const devices = await query<{ device_type: string }>(
