@@ -68,6 +68,11 @@ router.post(
   }),
   ah(async (req, res) => {
     const b = req.body;
+    // Key-rotation drills (Phase 21, A12 #20): don't let a revoked key sign
+    // anything new, even a build someone tries to slip in under it.
+    if (b.signingKeyId && (await isSigningKeyRevoked(b.signingKeyId))) {
+      return bad(res, `signing key ${b.signingKeyId} is revoked`, 403);
+    }
     const row = await queryOne(
       `INSERT INTO firmware (device_type, version, channel, url, sha256, signature, signing_key_id, provenance, size_bytes, min_version, notes, created_by)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12)
@@ -124,6 +129,84 @@ router.get(
   }),
 );
 
+// ── Signing-key revocation (Phase 21, A12 #20 — key-rotation drills) ───────
+// A key isn't cryptographically enforced device-side yet (that's Secure
+// Boot, blocked on hardware — Phase 19's design doc). Revoking one here
+// stops the BACKEND from ever pushing a build signed by it again — real
+// defense in depth ahead of Secure Boot, not a replacement for it.
+router.get(
+  '/signing-keys',
+  apiRoute({
+    method: 'get',
+    path: '/api/breeder/fleet/signing-keys',
+    tags: T,
+    secure: true,
+    summary: 'Revoked firmware signing keys.',
+    responses: {
+      200: {
+        description: 'ok',
+        schema: z.object({ revoked: z.array(z.record(z.string(), z.unknown())) }),
+      },
+    },
+  }),
+  ah(async (_req, res) => {
+    const rows = await query(`SELECT * FROM revoked_signing_keys ORDER BY revoked_at DESC`);
+    res.json({ revoked: rows });
+  }),
+);
+
+router.post(
+  '/signing-keys/:keyId/revoke',
+  apiRoute({
+    method: 'post',
+    path: '/api/breeder/fleet/signing-keys/{keyId}/revoke',
+    tags: T,
+    secure: true,
+    summary: 'Revoke a firmware signing key — blocks every build signed with it from being pushed.',
+    request: {
+      params: z.object({ keyId: z.string().min(1) }),
+      body: z.object({ reason: z.string().nullable().optional() }),
+    },
+    responses: { 200: { description: 'ok' } },
+  }),
+  ah(async (req, res) => {
+    const keyId = String(req.params.keyId);
+    await execute(
+      `INSERT INTO revoked_signing_keys (signing_key_id, reason, revoked_by)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (signing_key_id) DO UPDATE SET reason = $2, revoked_by = $3, revoked_at = NOW()`,
+      [keyId, req.body.reason ?? null, req.user?.id ?? null],
+    );
+    await logAccess(req, 'fleet.signingKey.revoke', {
+      subjectType: 'signing_key',
+      subjectId: keyId,
+    });
+    res.json({ ok: true, signingKeyId: keyId });
+  }),
+);
+
+router.delete(
+  '/signing-keys/:keyId/revoke',
+  apiRoute({
+    method: 'delete',
+    path: '/api/breeder/fleet/signing-keys/{keyId}/revoke',
+    tags: T,
+    secure: true,
+    summary: 'Un-revoke a signing key (undo an accidental revocation).',
+    request: { params: z.object({ keyId: z.string().min(1) }) },
+    responses: { 200: { description: 'ok' } },
+  }),
+  ah(async (req, res) => {
+    const keyId = String(req.params.keyId);
+    await execute(`DELETE FROM revoked_signing_keys WHERE signing_key_id = $1`, [keyId]);
+    await logAccess(req, 'fleet.signingKey.unrevoke', {
+      subjectType: 'signing_key',
+      subjectId: keyId,
+    });
+    res.json({ ok: true, signingKeyId: keyId });
+  }),
+);
+
 // ── Rollouts ───────────────────────────────────────────────────────────────
 router.get(
   '/rollouts',
@@ -165,11 +248,21 @@ router.post(
     responses: { 201: { description: 'created' }, 404: { description: 'firmware not found' } },
   }),
   ah(async (req, res) => {
-    const fw = await queryOne<{ id: string; device_type: string; version: string }>(
-      `SELECT id, device_type, version FROM firmware WHERE id = $1`,
-      [req.body.firmwareId],
-    );
+    const fw = await queryOne<{
+      id: string;
+      device_type: string;
+      version: string;
+      signing_key_id: string | null;
+    }>(`SELECT id, device_type, version, signing_key_id FROM firmware WHERE id = $1`, [
+      req.body.firmwareId,
+    ]);
     if (!fw) return bad(res, 'firmware not found', 404);
+    // Key-rotation drills (Phase 21, A12 #20): catch a revoked key at
+    // rollout-start time (immediate, clear error) rather than only at
+    // push time (spread across the fleet, one cryptic failure per device).
+    if (fw.signing_key_id && (await isSigningKeyRevoked(fw.signing_key_id))) {
+      return bad(res, `signing key ${fw.signing_key_id} is revoked`, 403);
+    }
     const percent = clampPercent(req.body.percent ?? 5);
 
     // Close any live rollout for this device type, then open the new one.
@@ -662,12 +755,25 @@ async function pickFirmware(
   return live.get(deviceType)?.fw ?? null;
 }
 
+/** Key-rotation drills (Phase 21, A12 #20). Checked once here — the one
+ * function every push path (manual push, sweep, rollout worker) funnels
+ * through — rather than at each call site. */
+async function isSigningKeyRevoked(signingKeyId: string): Promise<boolean> {
+  const row = await queryOne(`SELECT 1 FROM revoked_signing_keys WHERE signing_key_id = $1`, [
+    signingKeyId,
+  ]);
+  return row !== null;
+}
+
 async function sendOta(
   kennelId: string,
   deviceId: string,
   deviceType: string,
   fw: FwRow,
 ): Promise<void> {
+  if (fw.signing_key_id && (await isSigningKeyRevoked(fw.signing_key_id))) {
+    throw new Error(`signing key ${fw.signing_key_id} is revoked`);
+  }
   await publishCommand(
     kennelId,
     deviceId,
