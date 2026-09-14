@@ -9,11 +9,17 @@ vi.mock('../database/index.js', () => ({
 }));
 
 import { queryOne, execute } from '../database/index.js';
-import { adminOnly, auth, generateToken, ownerOnly, type AuthRequest } from '../middleware/auth.js';
+import {
+  adminOnly,
+  auth,
+  generateToken,
+  getJwtSecret,
+  ownerOnly,
+  type AuthRequest,
+} from '../middleware/auth.js';
 import { deviceAuth, parseDeviceBasic, parseDeviceUsername } from '../middleware/deviceAuth.js';
 import { canAdmin, isLocalRegisterAllowed, isOwner, mapRole } from '../identity/roles.js';
 import { register } from '../controllers/authController.js';
-import { getJwtSecret } from '../config.js';
 
 function mockRes() {
   const res: any = {
