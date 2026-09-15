@@ -4,8 +4,10 @@
  * (Phase 7 adds real file upload behind a storage interface).
  */
 import { Router } from 'express';
+import { z } from '@jubasjl76-eng/shared';
 import { query, queryOne, execute } from '../../database/index.js';
-import { ah, bad, need } from '../http.js';
+import { ah, bad } from '../http.js';
+import { apiRoute } from '../../openapi/index.js';
 import { raiseException } from '../exceptions.js';
 import {
   scheduleFromProtocol,
@@ -15,19 +17,43 @@ import {
 } from '../logic/vaccinations.js';
 
 const router = Router();
+const T = ['breeder: vaccinations'];
+const idParam = z.object({ id: z.string() });
+const doseSchema = z.array(z.record(z.string(), z.unknown()));
 
 // ── Protocols ─────────────────────────────────────────────────────────────
-router.get('/protocols', ah(async (req, res) => {
+router.get(
+  '/protocols',
+  apiRoute({
+    method: 'get', path: '/api/breeder/vaccinations/protocols', tags: T, secure: true,
+    summary: 'Vaccination protocol templates.',
+    responses: { 200: { description: 'ok', schema: z.object({ protocols: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const rows = await query(
     `SELECT * FROM vaccination_protocols WHERE kennel_id=$1 ORDER BY is_default DESC, name`,
     [req.kennelId],
   );
   res.json({ protocols: rows });
-}));
+}),
+);
 
-router.post('/protocols', ah(async (req, res) => {
-  const err = need(req.body, ['name', 'doses']);
-  if (err) return bad(res, err);
+router.post(
+  '/protocols',
+  apiRoute({
+    method: 'post', path: '/api/breeder/vaccinations/protocols', tags: T, secure: true,
+    summary: 'Create a vaccination protocol.',
+    request: {
+      body: z.object({
+        name: z.string().min(1),
+        doses: doseSchema,
+        species: z.string().optional(),
+        isDefault: z.boolean().optional(),
+      }),
+    },
+    responses: { 201: { description: 'created' } },
+  }),
+  ah(async (req, res) => {
   const b = req.body;
   if (b.isDefault) {
     await execute(`UPDATE vaccination_protocols SET is_default=false WHERE kennel_id=$1`, [req.kennelId]);
@@ -38,9 +64,26 @@ router.post('/protocols', ah(async (req, res) => {
     [req.kennelId, b.name, b.species ?? 'dog', JSON.stringify(b.doses), b.isDefault ?? false],
   );
   res.status(201).json({ protocol: row });
-}));
+}),
+);
 
-router.patch('/protocols/:id', ah(async (req, res) => {
+router.patch(
+  '/protocols/:id',
+  apiRoute({
+    method: 'patch', path: '/api/breeder/vaccinations/protocols/{id}', tags: T, secure: true,
+    summary: 'Update a vaccination protocol (partial).',
+    request: {
+      params: idParam,
+      body: z.object({
+        name: z.string().optional(),
+        species: z.string().optional(),
+        doses: doseSchema.optional(),
+        isDefault: z.boolean().optional(),
+      }),
+    },
+    responses: { 200: { description: 'ok' }, 404: { description: 'not found' } },
+  }),
+  ah(async (req, res) => {
   const camel: Record<string, string> = { isDefault: 'is_default' };
   const allowed = ['name', 'species', 'doses', 'is_default'];
   const sets: string[] = [];
@@ -61,15 +104,41 @@ router.patch('/protocols/:id', ah(async (req, res) => {
   );
   if (!row) return bad(res, 'Protocol not found', 404);
   res.json({ protocol: row });
-}));
+}),
+);
 
-router.delete('/protocols/:id', ah(async (req, res) => {
+router.delete(
+  '/protocols/:id',
+  apiRoute({
+    method: 'delete', path: '/api/breeder/vaccinations/protocols/{id}', tags: T, secure: true,
+    summary: 'Delete a vaccination protocol.',
+    request: { params: idParam },
+    responses: { 200: { description: 'ok' } },
+  }),
+  ah(async (req, res) => {
   await execute(`DELETE FROM vaccination_protocols WHERE id=$1 AND kennel_id=$2`, [req.params.id, req.kennelId]);
   res.json({ ok: true });
-}));
+}),
+);
 
 // ── Apply a protocol to an animal / puppy / whole litter ──────────────────
-router.post('/apply', ah(async (req, res) => {
+router.post(
+  '/apply',
+  apiRoute({
+    method: 'post', path: '/api/breeder/vaccinations/apply', tags: T, secure: true,
+    summary: 'Apply a protocol to an animal / puppy / whole litter.',
+    request: {
+      body: z.object({
+        protocolId: z.string().optional(),
+        doses: doseSchema.optional(),
+        animalId: z.string().optional(),
+        puppyId: z.string().optional(),
+        litterId: z.string().optional(),
+      }),
+    },
+    responses: { 201: { description: 'created' }, 404: { description: 'subject or protocol not found' } },
+  }),
+  ah(async (req, res) => {
   const b = req.body ?? {};
   let doses: ProtocolDose[] = Array.isArray(b.doses) ? b.doses : [];
   let protocolId: string | null = b.protocolId ?? null;
@@ -136,10 +205,25 @@ router.post('/apply', ah(async (req, res) => {
     }
   }
   res.status(201).json({ created, subjects: subjects.length });
-}));
+}),
+);
 
 // ── Records ───────────────────────────────────────────────────────────────
-router.get('/', ah(async (req, res) => {
+router.get(
+  '/',
+  apiRoute({
+    method: 'get', path: '/api/breeder/vaccinations', tags: T, secure: true,
+    summary: 'Vaccination records (filter by animalId / puppyId / status).',
+    request: {
+      query: z.object({
+        animalId: z.string().optional(),
+        puppyId: z.string().optional(),
+        status: z.string().optional(),
+      }),
+    },
+    responses: { 200: { description: 'ok', schema: z.object({ records: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const where: string[] = ['kennel_id = $1'];
   const params: unknown[] = [req.kennelId];
   if (req.query.animalId) { params.push(req.query.animalId); where.push(`animal_id = $${params.length}`); }
@@ -157,9 +241,18 @@ router.get('/', ah(async (req, res) => {
     items = items.filter((r) => r.status === req.query.status);
   }
   res.json({ records: items });
-}));
+}),
+);
 
-router.patch('/:id', ah(async (req, res) => {
+router.patch(
+  '/:id',
+  apiRoute({
+    method: 'patch', path: '/api/breeder/vaccinations/{id}', tags: T, secure: true,
+    summary: 'Update a vaccination record (partial).',
+    request: { params: idParam },
+    responses: { 200: { description: 'ok' }, 404: { description: 'not found' } },
+  }),
+  ah(async (req, res) => {
   const camel: Record<string, string> = { givenOn: 'given_on', dueOn: 'due_on', batchNo: 'batch_no', vetName: 'vet_name', certificateUrl: 'certificate_url' };
   const allowed = ['name', 'kind', 'due_on', 'given_on', 'batch_no', 'vet_name', 'certificate_url', 'notes'];
   const sets: string[] = [];
@@ -177,7 +270,8 @@ router.patch('/:id', ah(async (req, res) => {
   );
   if (!row) return bad(res, 'Record not found', 404);
   res.json({ record: row });
-}));
+}),
+);
 
 // ── Overdue sweep (also runs on the engine timer) ────────────────────────
 export async function vaccinationSweep(): Promise<{ raised: number }> {
@@ -215,8 +309,16 @@ export async function vaccinationSweep(): Promise<{ raised: number }> {
   return { raised };
 }
 
-router.post('/sweep', ah(async (_req, res) => {
+router.post(
+  '/sweep',
+  apiRoute({
+    method: 'post', path: '/api/breeder/vaccinations/sweep', tags: T, secure: true,
+    summary: 'Raise a care-inbox exception per subject with overdue vaccinations.',
+    responses: { 200: { description: 'ok', schema: z.object({ raised: z.number() }) } },
+  }),
+  ah(async (_req, res) => {
   res.json(await vaccinationSweep());
-}));
+}),
+);
 
 export default router;

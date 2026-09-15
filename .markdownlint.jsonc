@@ -1,0 +1,8 @@
+{
+  // Shared Markdown lint. MD013 (line length) off — docs wrap prose freely.
+  "default": true,
+  "MD013": false,
+  "MD024": { "siblings_only": true },
+  "MD033": false, // inline HTML is fine in our docs
+  "MD041": false
+}

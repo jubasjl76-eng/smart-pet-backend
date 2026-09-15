@@ -8,6 +8,7 @@
  */
 import type { Express } from 'express';
 import { auth } from '../middleware/auth.js';
+import { publicLimiter, breederLimiter } from '../middleware/rateLimit.js';
 import { withKennel } from './http.js';
 import animals from './routes/animals.js';
 import litters from './routes/litters.js';
@@ -22,19 +23,22 @@ import buyerComms from './routes/buyerComms.js';
 import breeding from './routes/breeding.js';
 import documents from './routes/documents.js';
 import privacy from './routes/privacy.js';
-import fleet from './routes/fleet.js';
+import fleet, { registerFleetOtaWorker } from './routes/fleet.js';
+import flags from './routes/flags.js';
 import geo from './routes/geo.js';
 import websiteRoutes from './routes/website.js';
 import { streamHandler } from './stream.js';
 
 export { startBreederEngine, stopBreederEngine, engineTick } from './engine/index.js';
 export { initBreederSchema } from './schema.js';
+export { closeStreamRedis } from './stream.js';
+export { registerFleetOtaWorker };
 
 export function mountBreeder(app: Express): void {
-  const guard = [auth, withKennel];
+  const guard = [auth, breederLimiter, withKennel];
 
   // Public marketing site — read-only, NO auth. Serves only published rows.
-  app.use('/api/public', publicRoutes);
+  app.use('/api/public', publicLimiter, publicRoutes);
 
   // Server-Sent Events — live care-inbox + device state for the console.
   app.get('/api/breeder/stream', ...guard, streamHandler);
@@ -53,6 +57,7 @@ export function mountBreeder(app: Express): void {
   app.use('/api/breeder/documents', ...guard, documents);
   app.use('/api/breeder/privacy', ...guard, privacy);
   app.use('/api/breeder/fleet', ...guard, fleet);
+  app.use('/api/breeder/flags', ...guard, flags);
   app.use('/api/breeder/geo', ...guard, geo);
 
   app.get('/api/breeder/health', (_req, res) => {

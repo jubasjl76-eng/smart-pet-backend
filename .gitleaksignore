@@ -1,0 +1,12 @@
+# Historical false positives / dead artifacts accepted after the Phase 18
+# full-history sweep (smart-pet-docs/security/history-sweep-2026-09.md).
+
+# TESTING.md — Mongo-era test doc holding an example JWT that expired 2026-04-11
+# for a userId that isn't in the current Postgres schema. The file is deleted on
+# HEAD; this pins the historical commit so the weekly full-history scan stays green.
+f45744aa0c314eb5ba5f1cff5e72a51af417111a:TESTING.md:jwt:8
+
+# privacy.test.ts — `generic-api-key` fired on the string '009_access_log.sql'
+# (a migration filename in a fixture list). Kept live with a `gitleaks:allow`
+# comment; this covers the historical commit.
+1cfbb373f6eb29d01bfc1b937aeb3afd5e179659:src/__tests__/privacy.test.ts:generic-api-key:35

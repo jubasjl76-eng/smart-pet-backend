@@ -92,6 +92,7 @@ export async function drainNotifications(
     const attempts = (n.attempts ?? 0) + 1;
     const plan = planNextAttempt(result, attempts, n.max_attempts ?? 5);
 
+    // nosemgrep: breeder-query-must-be-kennel-scoped — engine sweep over all kennels; `n` is from the queued batch above, updated by its own id
     await execute(
       `UPDATE notifications
           SET status = $2::text, attempts = $3::int, error = $4::text,

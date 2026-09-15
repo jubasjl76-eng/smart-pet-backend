@@ -7,16 +7,16 @@ Slice 2: retention windows + sweep, GDPR export / delete.
 
 `access_log` is append-only: one row per read of sensitive data.
 
-| column | notes |
-|---|---|
-| `id` | `BIGSERIAL` |
-| `kennel_id` | tenant |
-| `user_id` | the caller, null for unauthenticated paths |
-| `action` | `document.download` now; `camera.view`, `door.open`, `privacy.export` planned |
+| column                        | notes                                                                                                                                                                                       |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                          | `BIGSERIAL`                                                                                                                                                                                 |
+| `kennel_id`                   | tenant                                                                                                                                                                                      |
+| `user_id`                     | the caller, null for unauthenticated paths                                                                                                                                                  |
+| `action`                      | `document.download` now; `camera.view`, `door.open`, `privacy.export` planned                                                                                                               |
 | `subject_type` / `subject_id` | what was read. `subject_id` is text, not UUID (device ids). For a document download this is the document's own subject (buyer / puppy / ...), so "everything touching buyer X" is one query |
-| `ip` | first hop of `x-forwarded-for`, else socket address |
-| `detail` | JSONB, e.g. `{ documentId, kind, generated }` |
-| `at` | timestamp |
+| `ip`                          | first hop of `x-forwarded-for`, else socket address                                                                                                                                         |
+| `detail`                      | JSONB, e.g. `{ documentId, kind, generated }`                                                                                                                                               |
+| `at`                          | timestamp                                                                                                                                                                                   |
 
 Indexes: `(kennel_id, at DESC)`, `(subject_type, subject_id)`.
 
@@ -34,13 +34,13 @@ line the same way.
 
 Behind the breeder guard. Filters (all optional, AND-ed):
 
-| query | matches |
-|---|---|
-| `action` | exact |
-| `subjectType` / `subjectId` | exact |
-| `userId` | exact |
-| `since` / `until` | `at >=` / `at <=` (ISO timestamp) |
-| `limit` | default 200, max 1000 |
+| query                       | matches                           |
+| --------------------------- | --------------------------------- |
+| `action`                    | exact                             |
+| `subjectType` / `subjectId` | exact                             |
+| `userId`                    | exact                             |
+| `since` / `until`           | `at >=` / `at <=` (ISO timestamp) |
+| `limit`                     | default 200, max 1000             |
 
 Returns `{ entries: [...] }`, newest first.
 
@@ -52,13 +52,34 @@ that has a row with `keep_days >= 1`.
 
 Classes: `access_log` (deletes `access_log` rows older than the window),
 `document` (deletes `documents` rows older than `created_at + window`, and their
-stored files, 500 per tick).
+stored files, 500 per tick), **`exception`** (Phase 20 — deletes `exceptions`
+rows older than the window, but only ones with `status = 'resolved'`; a
+still-open alert never disappears just because it's old).
 ponytail: one window for all document kinds; split into `document.contract` /
 `document.certificate` if the breeder needs different windows (a contract is
 often a 6-year legal keep).
 
 Buyer / animal / litter records are **not** on an automatic timer. Their
 removal is the explicit erasure path below.
+
+**Partitioned since Phase 20 (A12 #23)** — `access_log` and `exceptions` are
+range-partitioned by month (`015_partition_access_log.sql`,
+`016_partition_exceptions.sql`; mechanics in `src/db/partitions.ts`). For
+these two classes, `retentionSweep()` first tries a fast path — `DROP TABLE`
+on any whole calendar month that's entirely past the cutoff (and, for
+`exception`, has no non-resolved row) — before falling through to the same
+row-level `DELETE` as before for whatever that can't cover: the partial month
+straddling the exact cutoff timestamp, and a catch-all default partition. A
+monthly `pg-boss` schedule (`src/jobs/partitionMaintenance.ts` — same
+`pg-boss` infrastructure as the fleet OTA queue, `docs/phase9-fleet.md`)
+keeps the next couple months' partitions created ahead of time; it also runs
+once at boot so a fresh deployment doesn't wait for the 1st of the month.
+`notifications.exception_id`'s foreign key was dropped to make `exceptions`
+partitionable (Postgres requires a partitioned table's referenced key to
+include the partition column) — nothing ever `DELETE`s from `exceptions`
+today outside this sweep, so the `ON DELETE CASCADE` it carried had never
+fired; the relationship is now an application-level convention, not a DB
+constraint.
 
 ### `GET /api/breeder/privacy/retention`
 
@@ -79,11 +100,11 @@ the engine tick.
 `subjectType`: `buyer` | `animal` | `litter`. Owner data lives in the
 pet-owner app (not built yet) so `owner` returns 400. Returns one JSON bundle:
 
-| subject | bundle |
-|---|---|
-| `buyer` | the buyer row, `buyer_messages`, `update_pack_subscriptions`, their `puppies` (summary), `documents`, `access_log` entries touching them |
-| `animal` | the animal row, `weight_readings`, `vaccination_records`, `heat_cycles`, `litters` it parents, `documents` |
-| `litter` | the litter row, `puppies`, waitlist `buyers`, `documents` |
+| subject  | bundle                                                                                                                                   |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `buyer`  | the buyer row, `buyer_messages`, `update_pack_subscriptions`, their `puppies` (summary), `documents`, `access_log` entries touching them |
+| `animal` | the animal row, `weight_readings`, `vaccination_records`, `heat_cycles`, `litters` it parents, `documents`                               |
+| `litter` | the litter row, `puppies`, waitlist `buyers`, `documents`                                                                                |
 
 Logged as `privacy.export`.
 
@@ -91,14 +112,23 @@ Logged as `privacy.export`.
 
 Body `{ subjectType, id, confirm: true }`. Without `confirm: true` → 400.
 
-| subject | effect | refuses (409) when |
-|---|---|---|
-| `buyer` | detaches their puppies (`puppies.buyer_id = NULL`, inventory kept), deletes the buyer (messages + subscriptions cascade) and their `documents` + files | never |
-| `animal` | deletes the animal (weights, vaccination records, heat cycles cascade) and its `documents` + files | it is `dam_id` / `sire_id` on any litter |
-| `litter` | deletes the litter (puppies cascade) and its `documents` + files | any puppy is `reserved` / `sold` / `kept` |
+| subject  | effect                                                                                                                                                 | refuses (409) when                        |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
+| `buyer`  | detaches their puppies (`puppies.buyer_id = NULL`, inventory kept), deletes the buyer (messages + subscriptions cascade) and their `documents` + files | never                                     |
+| `animal` | deletes the animal (weights, vaccination records, heat cycles cascade) and its `documents` + files                                                     | it is `dam_id` / `sire_id` on any litter  |
+| `litter` | deletes the litter (puppies cascade) and its `documents` + files                                                                                       | any puppy is `reserved` / `sold` / `kept` |
 
 Returns `{ ok: true, deleted: { <table>: n } }`. Logged as `privacy.delete`
 with the counts in `detail`.
+
+**Not on the `pg-boss` job queue (Phase 20, A12 #3).** Export and delete are
+both small, synchronous, single-subject operations (one buyer/animal/litter
+at a time, a handful of indexed queries) — there's no batching or background
+work here to hand to a durable queue. `retentionSweep` is a periodic bulk
+`DELETE ... WHERE` with no external call and no retry/backoff need; it's
+naturally idempotent and safely re-run by the next engine tick if interrupted.
+`pg-boss` was introduced for a genuinely async workload instead: fleet OTA
+fan-out (`docs/phase9-fleet.md`).
 
 ## Console (Cursor's Phase 8 task)
 

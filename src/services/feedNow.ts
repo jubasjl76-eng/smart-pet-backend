@@ -1,4 +1,3 @@
-import { FEED_ACK_TIMEOUT_MS } from '../config.js';
 import {
   buildFeedCommand,
   commandTopic,
@@ -7,6 +6,8 @@ import {
 } from '../mqtt/contract.js';
 import type { FeederBus } from './feederMqtt.js';
 import type { DeviceRow, FeederStatusPayload } from '../types.js';
+
+const FEED_ACK_TIMEOUT_MS = parseInt(process.env.FEED_ACK_TIMEOUT_MS || '8000', 10);
 
 export async function executeFeedNow(
   device: DeviceRow,
