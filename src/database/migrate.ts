@@ -16,6 +16,7 @@ import { readdirSync, readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import pg from 'pg';
+import { config, pgDatabase } from '../config/index.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DIR = join(HERE, 'migrations');
@@ -35,42 +36,57 @@ export function listMigrations(): { name: string; sql: string }[] {
     .map((name) => ({ name, sql: readFileSync(join(DIR, name), 'utf8') }));
 }
 
+// Fixed Postgres advisory-lock id so two concurrent deploys serialise on the
+// migration run instead of both applying the same file (A12 #8). Session-level:
+// held across the per-file transactions, released in `finally` or on session end.
+const MIGRATION_LOCK_KEY = 4133719;
+
 export async function runMigrations(
   db: MigrationPool,
   log: (m: string) => void = () => {}
 ): Promise<string[]> {
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS _migrations (
-      name TEXT PRIMARY KEY,
-      applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  const done = new Set(
-    (await db.query('SELECT name FROM _migrations')).rows.map((r) => r.name)
-  );
-  const applied: string[] = [];
-  for (const { name, sql } of listMigrations()) {
-    if (done.has(name)) continue;
-    log(`[migrate] applying ${name}`);
+  // With a real Pool, hold ONE connection for the whole run: the advisory lock
+  // is session-scoped and BEGIN/COMMIT must not split across connections. The
+  // pglite test mock has no connect() — single process, no contention, no lock.
+  const client = typeof db.connect === 'function' ? await db.connect() : db;
+  const dedicated = client !== db;
 
-    // A Pool hands out a connection per query() call, which would split
-    // BEGIN/COMMIT across connections — grab a dedicated client when we can.
-    const client = typeof db.connect === 'function' ? await db.connect() : db;
-    const dedicated = client !== db;
-    try {
-      if (dedicated) await client.query('BEGIN');
-      await client.query(sql);
-      await client.query('INSERT INTO _migrations (name) VALUES ($1)', [name]);
-      if (dedicated) await client.query('COMMIT');
-      applied.push(name);
-    } catch (err) {
-      if (dedicated) await client.query('ROLLBACK').catch(() => {});
-      throw new Error(`migration ${name} failed: ${(err as Error).message}`);
-    } finally {
-      if (dedicated) (client as any).release();
+  try {
+    if (dedicated) await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_KEY]);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS _migrations (
+        name TEXT PRIMARY KEY,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    const done = new Set(
+      (await client.query('SELECT name FROM _migrations')).rows.map((r) => r.name)
+    );
+    const applied: string[] = [];
+    for (const { name, sql } of listMigrations()) {
+      if (done.has(name)) continue;
+      log(`[migrate] applying ${name}`);
+      try {
+        if (dedicated) await client.query('BEGIN');
+        await client.query(sql);
+        await client.query('INSERT INTO _migrations (name) VALUES ($1)', [name]);
+        if (dedicated) await client.query('COMMIT');
+        applied.push(name);
+      } catch (err) {
+        if (dedicated) await client.query('ROLLBACK').catch(() => {});
+        throw new Error(`migration ${name} failed: ${(err as Error).message}`);
+      }
+    }
+    return applied;
+  } finally {
+    if (dedicated) {
+      await (client as MigrationClient)
+        .query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_KEY])
+        .catch(() => {});
+      (client as { release: () => void }).release();
     }
   }
-  return applied;
 }
 
 // ── CLI ─────────────────────────────────────────────────────────────────────
@@ -81,11 +97,11 @@ async function cli(): Promise<void> {
   if (process.argv.includes('--status')) {
     const { Pool } = pg;
     const pool = new Pool({
-      host: process.env.PG_HOST || 'localhost',
-      port: parseInt(process.env.PG_PORT || '5432', 10),
-      database: process.env.PG_DATABASE || 'smartpet',
-      user: process.env.PG_USER || 'postgres',
-      password: process.env.PG_PASSWORD || 'postgres',
+      host: config.PG_HOST,
+      port: config.PG_PORT,
+      database: pgDatabase(),
+      user: config.PG_USER,
+      password: config.PG_PASSWORD,
     });
     try {
       await pool.query(`CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT NOW())`);

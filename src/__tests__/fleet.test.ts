@@ -35,13 +35,22 @@ const db = new PGlite();
 vi.mock('../database/index.js', () => ({
   query: async (t: string, p?: unknown[]) => (await db.query(t, p as unknown[])).rows,
   queryOne: async (t: string, p?: unknown[]) => (await db.query(t, p as unknown[])).rows[0] ?? null,
-  execute: async (t: string, p?: unknown[]) => { await db.query(t, p as unknown[]); },
+  execute: async (t: string, p?: unknown[]) => {
+    await db.query(t, p as unknown[]);
+  },
   pool: {},
 }));
 const publishCommand = vi.fn(async () => {});
 vi.mock('../services/feederMqtt.js', () => ({ publishCommand }));
 
-const { default: fleetRouter, fleetSweep } = await import('../breeder/routes/fleet.js');
+const bossSend = vi.fn(async () => 'job-id');
+vi.mock('../jobs/queue.js', () => ({ getQueue: () => ({ send: bossSend }) }));
+
+const {
+  default: fleetRouter,
+  fleetSweep,
+  otaPushHandler,
+} = await import('../breeder/routes/fleet.js');
 
 const M = dirname(fileURLToPath(import.meta.url)).replace(/__tests__$/, 'database/migrations');
 let base: string;
@@ -58,35 +67,82 @@ beforeAll(async () => {
       id BIGSERIAL PRIMARY KEY, kennel_id VARCHAR(255) NOT NULL, user_id UUID, action VARCHAR(40) NOT NULL,
       subject_type VARCHAR(20), subject_id VARCHAR(255), ip VARCHAR(64), detail JSONB NOT NULL DEFAULT '{}'::jsonb,
       at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+    CREATE TABLE exceptions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(), kennel_id VARCHAR(255) NOT NULL,
+      kind VARCHAR(64) NOT NULL, device_id VARCHAR(255), dedup_key VARCHAR(255),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
   `);
   await db.exec(readFileSync(join(M, '011_fleet_firmware.sql'), 'utf8'));
+  await db.exec(readFileSync(join(M, '014_ota_provenance.sql'), 'utf8'));
+  await db.exec(readFileSync(join(M, '018_signing_key_revocation.sql'), 'utf8'));
 
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
     (req as unknown as { kennelId: string }).kennelId = 'home';
-    (req as unknown as { user: { id: string } }).user = { id: '00000000-0000-0000-0000-0000000000aa' };
+    (req as unknown as { user: { id: string } }).user = {
+      id: '00000000-0000-0000-0000-0000000000aa',
+    };
     next();
   });
   app.use(fleetRouter);
-  const srv = await new Promise<import('node:http').Server>((r) => { const s = app.listen(0, () => r(s)); });
+  const srv = await new Promise<import('node:http').Server>((r) => {
+    const s = app.listen(0, () => r(s));
+  });
   base = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
 });
 
 const post = (p: string, body: unknown) =>
-  fetch(`${base}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  fetch(`${base}${p}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 const patch = (p: string, body: unknown) =>
-  fetch(`${base}${p}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  fetch(`${base}${p}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 
 describe('firmware + rollout routes', () => {
   let fwId = '';
   let rolloutId = '';
 
+  it('rejects a url that is not an immutable per-version path (Phase 21, A11)', async () => {
+    const r = await post('/firmware', {
+      deviceType: 'feeder',
+      version: '1.4.0',
+      url: 'https://x/latest.bin', // not .../firmware/feeder/1.4.0/...
+      sha256: 'a'.repeat(64),
+    });
+    expect(r.status).toBe(400);
+  });
+
   it('publishes a build and rejects a duplicate version', async () => {
-    const r = await post('/firmware', { deviceType: 'feeder', version: '1.4.0', url: 'https://x/f-1.4.0.bin', sha256: 'a'.repeat(64) });
+    const r = await post('/firmware', {
+      deviceType: 'feeder',
+      version: '1.4.0',
+      url: 'https://x/firmware/feeder/1.4.0/app.bin',
+      sha256: 'a'.repeat(64),
+      signingKeyId: 'fw-key-2026',
+      provenance: { builder: 'gha', slsa: 3 },
+    });
     expect(r.status).toBe(201);
-    fwId = (await r.json()).firmware.id;
-    expect((await post('/firmware', { deviceType: 'feeder', version: '1.4.0', url: 'https://x/again.bin', sha256: 'b'.repeat(64) })).status).toBe(409);
+    const created = (await r.json()).firmware;
+    fwId = created.id;
+    expect(created.signing_key_id).toBe('fw-key-2026');
+    expect(created.provenance).toMatchObject({ builder: 'gha', slsa: 3 });
+    expect(
+      (
+        await post('/firmware', {
+          deviceType: 'feeder',
+          version: '1.4.0',
+          url: 'https://x/firmware/feeder/1.4.0/again.bin',
+          sha256: 'b'.repeat(64),
+        })
+      ).status,
+    ).toBe(409);
   });
 
   it('starts a canary rollout at 5%', async () => {
@@ -104,7 +160,12 @@ describe('firmware + rollout routes', () => {
   });
 
   it('a second rollout for the same type closes the first', async () => {
-    const r2 = await post('/firmware', { deviceType: 'feeder', version: '1.5.0', url: 'https://x/f-1.5.0.bin', sha256: 'c'.repeat(64) });
+    const r2 = await post('/firmware', {
+      deviceType: 'feeder',
+      version: '1.5.0',
+      url: 'https://x/firmware/feeder/1.5.0/app.bin',
+      sha256: 'c'.repeat(64),
+    });
     const fw2 = (await r2.json()).firmware.id;
     await post('/rollouts', { firmwareId: fw2, percent: 10 });
     const live = (await db.query(`SELECT state FROM firmware_rollouts WHERE state <> 'done'`)).rows;
@@ -113,23 +174,41 @@ describe('firmware + rollout routes', () => {
 });
 
 describe('fleetSweep + GET /devices', () => {
-  it('offers the OTA to in-bucket online devices, capped per tick', async () => {
-    publishCommand.mockClear();
+  it('enqueues an OTA push job per in-bucket online device, capped per tick', async () => {
+    bossSend.mockClear();
     // fresh rollout at 100% so every device is in-bucket
     await db.query(`UPDATE firmware_rollouts SET state = 'done'`);
-    const fw = (await db.query<{ id: string }>(`INSERT INTO firmware (device_type, version, url, sha256)
-      VALUES ('feeder','2.0.0','https://x/2.bin',$1) RETURNING id`, ['d'.repeat(64)])).rows[0];
-    await db.query(`INSERT INTO firmware_rollouts (firmware_id, device_type, state, percent)
-      VALUES ($1,'feeder','rolling',100)`, [fw.id]);
+    const fw = (
+      await db.query<{ id: string }>(
+        `INSERT INTO firmware (device_type, version, url, sha256, signing_key_id)
+      VALUES ('feeder','2.0.0','https://x/2.bin',$1,'fw-key-2026') RETURNING id`,
+        ['d'.repeat(64)],
+      )
+    ).rows[0];
+    await db.query(
+      `INSERT INTO firmware_rollouts (firmware_id, device_type, state, percent)
+      VALUES ($1,'feeder','rolling',100)`,
+      [fw.id],
+    );
     for (let i = 0; i < 15; i++) {
-      await db.query(`INSERT INTO devices (device_id, device_type, kennel_id, is_online) VALUES ($1,'feeder','home',true)`, [`f-${i}`]);
+      await db.query(
+        `INSERT INTO devices (device_id, device_type, kennel_id, is_online) VALUES ($1,'feeder','home',true)`,
+        [`f-${i}`],
+      );
     }
-    await db.query(`INSERT INTO devices (device_id, device_type, kennel_id, is_online) VALUES ('f-off','feeder','home',false)`);
+    await db.query(
+      `INSERT INTO devices (device_id, device_type, kennel_id, is_online) VALUES ('f-off','feeder','home',false)`,
+    );
 
     const r = await fleetSweep();
-    expect(r.pushed).toBe(10);              // OTA_PER_TICK cap
-    expect(publishCommand).toHaveBeenCalledTimes(10);
-    expect(publishCommand.mock.calls[0][3]).toBe('feeder'); // deviceType routed on the topic
+    expect(r.pushed).toBe(10); // OTA_PER_TICK cap
+    expect(bossSend).toHaveBeenCalledTimes(10);
+    const [queue, payload, opts] = bossSend.mock.calls[0];
+    expect(queue).toBe('fleet-ota-push');
+    expect(payload).toMatchObject({ deviceType: 'feeder', kennelId: 'home' });
+    expect((opts as { singletonKey: string }).singletonKey).toBe(
+      `home:${(payload as { deviceId: string }).deviceId}`,
+    );
 
     const devs = await (await fetch(`${base}/devices`)).json();
     const one = devs.devices.find((d: { deviceId: string }) => d.deviceId === 'f-0');
@@ -138,10 +217,118 @@ describe('fleetSweep + GET /devices', () => {
   });
 
   it('skips a device already reporting the target version', async () => {
-    publishCommand.mockClear();
+    bossSend.mockClear();
     await db.query(`UPDATE devices SET fw_version = '2.0.0' WHERE device_id LIKE 'f-%'`);
     const r = await fleetSweep();
     expect(r.pushed).toBe(0);
+    expect(bossSend).not.toHaveBeenCalled();
+  });
+
+  it('otaPushHandler publishes the OTA command carried in the job payload', async () => {
+    publishCommand.mockClear();
+    const payload = {
+      kennelId: 'home',
+      deviceId: 'f-0',
+      deviceType: 'feeder',
+      fw: {
+        id: 'fw-1',
+        device_type: 'feeder',
+        version: '2.0.0',
+        url: 'https://x/2.bin',
+        sha256: 'd'.repeat(64),
+        signature: null,
+        signing_key_id: 'fw-key-2026',
+      },
+    };
+    await otaPushHandler([{ data: payload } as never]);
+    expect(publishCommand).toHaveBeenCalledTimes(1);
+    expect(publishCommand.mock.calls[0][3]).toBe('feeder'); // deviceType routed on the topic
+    const otaBody = publishCommand.mock.calls[0][2] as {
+      command: string;
+      params: Record<string, unknown>;
+    };
+    expect(otaBody.command).toBe('ota');
+    expect(otaBody.params).toMatchObject({ sha256: 'd'.repeat(64), signingKeyId: 'fw-key-2026' });
+  });
+
+  it('GET /health — version histogram + rollout progress + crash window', async () => {
+    // from the prior test: 15 online + 1 offline feeder, all now on 2.0.0
+    const h = await (await fetch(`${base}/health`)).json();
+    const v200 = h.versions.find((v: { fw: string }) => v.fw === '2.0.0');
+    expect(v200).toMatchObject({ deviceType: 'feeder', total: 16, online: 15 });
+
+    const rp = h.rollouts.find((r: { deviceType: string }) => r.deviceType === 'feeder');
+    expect(rp).toMatchObject({ version: '2.0.0', total: 16, onTarget: 16, pending: 0 });
+
+    expect(h.crashes).toMatchObject({ windowDays: 30, totalDevices: 16, crashFreeDevices: 16 });
+    expect(Array.isArray(h.crashes.byVersion)).toBe(true);
+  });
+});
+
+// Phase 21, A12 #20 — key-rotation drills. A separate key from 'fw-key-2026'
+// (used throughout the suite above) so revoking it here doesn't disturb
+// those fixtures.
+describe('signing-key revocation', () => {
+  const REVOKE_KEY = 'fw-key-revoke-test';
+
+  it('lists nothing revoked by default', async () => {
+    const r = await (await fetch(`${base}/signing-keys`)).json();
+    expect(r.revoked).toEqual([]);
+  });
+
+  it('blocks registering a build signed with a revoked key', async () => {
+    await post(`/signing-keys/${REVOKE_KEY}/revoke`, { reason: 'drill' });
+    const r = await post('/firmware', {
+      deviceType: 'door',
+      version: '1.0.0',
+      url: 'https://x/firmware/door/1.0.0/app.bin',
+      sha256: 'e'.repeat(64),
+      signingKeyId: REVOKE_KEY,
+    });
+    expect(r.status).toBe(403);
+  });
+
+  it('blocks starting a rollout for firmware already signed with a revoked key', async () => {
+    const fw = (
+      await db.query<{ id: string }>(
+        `INSERT INTO firmware (device_type, version, url, sha256, signing_key_id)
+         VALUES ('door','0.9.0','https://x/firmware/door/0.9.0/app.bin',$1,$2) RETURNING id`,
+        ['f'.repeat(64), REVOKE_KEY],
+      )
+    ).rows[0];
+    const r = await post('/rollouts', { firmwareId: fw.id });
+    expect(r.status).toBe(403);
+  });
+
+  it('blocks otaPushHandler from publishing a build signed with a revoked key', async () => {
+    publishCommand.mockClear();
+    const payload = {
+      kennelId: 'home',
+      deviceId: 'door-revoke-test',
+      deviceType: 'door',
+      fw: {
+        id: 'fw-revoked',
+        device_type: 'door',
+        version: '0.9.0',
+        url: 'https://x/firmware/door/0.9.0/app.bin',
+        sha256: 'f'.repeat(64),
+        signature: null,
+        signing_key_id: REVOKE_KEY,
+      },
+    };
+    await expect(otaPushHandler([{ data: payload } as never])).rejects.toThrow(/revoked/);
     expect(publishCommand).not.toHaveBeenCalled();
+  });
+
+  it('un-revoking lets a build with that key register again', async () => {
+    await fetch(`${base}/signing-keys/${REVOKE_KEY}/revoke`, { method: 'DELETE' });
+    const r = await post('/firmware', {
+      deviceType: 'door',
+      version: '1.0.1',
+      url: 'https://x/firmware/door/1.0.1/app.bin',
+      sha256: 'a1'.repeat(32),
+      signingKeyId: REVOKE_KEY,
+    });
+    expect(r.status).toBe(201);
   });
 });

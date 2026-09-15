@@ -4,11 +4,14 @@
  * toggle + photo fields call these; a publish change pings the site to refresh.
  */
 import { Router } from 'express';
+import { z } from '@jubasjl76-eng/shared';
 import { query, queryOne, execute } from '../../database/index.js';
 import { ah, bad } from '../http.js';
+import { apiRoute } from '../../openapi/index.js';
 import { fireRevalidate } from '../revalidate.js';
 
 const router = Router();
+const T = ['breeder: website'];
 
 const KIND_TABLE: Record<string, string> = {
   animal: 'animals',
@@ -25,6 +28,11 @@ const JSON_COLS = new Set(['photos', 'health_tests']);
 // Current public config + how much is published.
 router.get(
   '/',
+  apiRoute({
+    method: 'get', path: '/api/breeder/website', tags: T, secure: true,
+    summary: 'Public site config + published counts.',
+    responses: { 200: { description: 'ok' } },
+  }),
   ah(async (req, res) => {
     const kennel = await queryOne(
       `SELECT slug, name, public_tagline, public_about, public_email, public_phone,
@@ -46,6 +54,21 @@ router.get(
 // Set the kennel's public identity (tagline / about / contact / socials).
 router.put(
   '/kennel',
+  apiRoute({
+    method: 'put', path: '/api/breeder/website/kennel', tags: T, secure: true,
+    summary: 'Set the kennel’s public identity.',
+    request: {
+      body: z.object({
+        tagline: z.string().optional(),
+        about: z.string().optional(),
+        email: z.string().optional(),
+        phone: z.string().optional(),
+        location: z.string().optional(),
+        socials: z.record(z.string(), z.unknown()).optional(),
+      }),
+    },
+    responses: { 200: { description: 'ok' } },
+  }),
   ah(async (req, res) => {
     const map: Record<string, string> = {
       tagline: 'public_tagline',
@@ -73,6 +96,12 @@ router.put(
 // Toggle publish state / set photos / set public copy for one row.
 router.patch(
   '/:kind/:id',
+  apiRoute({
+    method: 'patch', path: '/api/breeder/website/{kind}/{id}', tags: T, secure: true,
+    summary: 'Toggle publish / set photos / set public copy for one row.',
+    request: { params: z.object({ kind: z.enum(['animal', 'litter', 'puppy']), id: z.string() }) },
+    responses: { 200: { description: 'ok' }, 404: { description: 'not found' } },
+  }),
   ah(async (req, res) => {
     const kind = String(req.params.kind);
     const id = String(req.params.id);
@@ -105,6 +134,11 @@ router.patch(
 // so the console can show one "website" screen.
 router.get(
   '/inventory',
+  apiRoute({
+    method: 'get', path: '/api/breeder/website/inventory', tags: T, secure: true,
+    summary: 'Everything publishable with its publish + photo state.',
+    responses: { 200: { description: 'ok' } },
+  }),
   ah(async (req, res) => {
     const [animals, litters, puppies] = await Promise.all([
       query(

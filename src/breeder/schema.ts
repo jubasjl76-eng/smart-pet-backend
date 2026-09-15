@@ -344,6 +344,16 @@ export const BREEDER_DDL = `
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
+    -- Fleet kill switch (Phase 19, A12 #17). Source of truth for the retained
+    -- kennel/{k}/_control MQTT message; re-published to the broker on connect.
+    CREATE TABLE IF NOT EXISTS fleet_control (
+      kennel_id VARCHAR(255) PRIMARY KEY,
+      safe_mode BOOLEAN NOT NULL DEFAULT false,
+      reason TEXT,
+      set_by UUID,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     ALTER TABLE users ADD COLUMN IF NOT EXISTS kennel_id VARCHAR(255);
 
     CREATE INDEX IF NOT EXISTS idx_animals_kennel ON animals(kennel_id);

@@ -4,26 +4,56 @@
  */
 
 import pg from 'pg';
-import dotenv from 'dotenv';
+import { config, pgDatabase } from '../config/index.js';
+import { log } from '../log.js';
 
-dotenv.config();
+const dlog = log.child({ mod: 'db' });
 
 const { Pool } = pg;
 
-// Determine which database to use based on mode
-const BACKEND_MODE = (process.env.BACKEND_MODE || 'cloud').toLowerCase();
+const BACKEND_MODE = config.BACKEND_MODE;
 
+// Pool sizing (Phase 20, A12 #1) — unmanaged pg.Pool defaults (max 10, no
+// connection timeout) are fine at ×1 but don't scale intentionally; these
+// are all env-driven so Terraform can tune them per instance (staging/prod
+// set PG_POOL_MAX from max_connections / instance count) without a code
+// change. statement_timeout is a native pg connection param — enforced
+// server-side per connection, no per-query wiring needed.
 const pool = new Pool({
-  host: process.env.PG_HOST || 'localhost',
-  port: parseInt(process.env.PG_PORT || '5432'),
-  database: process.env.PG_DATABASE || (BACKEND_MODE === 'edge' ? 'smartpet_edge' : 'smartpet'),
-  user: process.env.PG_USER || 'postgres',
-  password: process.env.PG_PASSWORD || 'postgres',
+  host: config.PG_HOST,
+  port: config.PG_PORT,
+  database: pgDatabase(),
+  user: config.PG_USER,
+  password: config.PG_PASSWORD,
+  max: config.PG_POOL_MAX,
+  idleTimeoutMillis: config.PG_IDLE_TIMEOUT_MS,
+  connectionTimeoutMillis: config.PG_CONNECTION_TIMEOUT_MS,
+  statement_timeout: config.PG_STATEMENT_TIMEOUT_MS,
 });
 
+// RDS read replica (Phase 21, A11/A12) — exports / growth-chart aggregation /
+// GDPR export are heavy, occasional reads that shouldn't compete with the
+// primary's transactional load. `PG_REPLICA_HOST` unset (dev/local, any env
+// without a replica) → `replicaPool` is null and queryReplica()/
+// queryOneReplica() below fall back to the primary pool — callers don't
+// need their own conditional.
+const replicaPool = config.PG_REPLICA_HOST
+  ? new Pool({
+      host: config.PG_REPLICA_HOST,
+      port: config.PG_PORT,
+      database: pgDatabase(),
+      user: config.PG_USER,
+      password: config.PG_PASSWORD,
+      max: config.PG_REPLICA_POOL_MAX,
+      idleTimeoutMillis: config.PG_IDLE_TIMEOUT_MS,
+      connectionTimeoutMillis: config.PG_CONNECTION_TIMEOUT_MS,
+      statement_timeout: config.PG_STATEMENT_TIMEOUT_MS,
+    })
+  : null;
+
 export async function initializeDatabase(): Promise<void> {
-  console.log(`[Database] Initializing PostgreSQL (${BACKEND_MODE} mode)...`);
-  
+  dlog.info({ mode: BACKEND_MODE }, 'initializing PostgreSQL');
+
   try {
     // Create tables
     await pool.query(`
@@ -145,8 +175,6 @@ export async function initializeDatabase(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_alerts_acknowledged ON alerts(acknowledged);
       CREATE INDEX IF NOT EXISTS idx_sync_queue_synced ON sync_queue(synced);
     `);
-    
-
 
     await pool.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'owner';
@@ -170,9 +198,9 @@ export async function initializeDatabase(): Promise<void> {
     // Users, the kennel, rules and pens are seeded by src/database/seed.ts,
     // which runs on boot after the migrations.
 
-    console.log('[Database] Tables created successfully');
+    dlog.debug('base tables ready');
   } catch (error) {
-    console.error('[Database] Error creating tables:', error);
+    dlog.error({ err: error }, 'error creating base tables');
   }
   // Migrations run in src/index.ts *after* initBreederSchema(), since some
   // migration files ALTER tables the breeder schema owns.
@@ -191,6 +219,25 @@ export async function queryOne<T>(text: string, params?: any[]): Promise<T | nul
 
 export async function execute(text: string, params?: any[]): Promise<void> {
   await pool.query(text, params);
+}
+
+/** True once queryReplica()/queryOneReplica() route to a real replica instead of falling back to the primary. */
+export function hasReadReplica(): boolean {
+  return replicaPool !== null;
+}
+
+export async function queryReplica<T>(text: string, params?: any[]): Promise<T[]> {
+  const result = await (replicaPool ?? pool).query(text, params);
+  return result.rows;
+}
+
+export async function queryOneReplica<T>(text: string, params?: any[]): Promise<T | null> {
+  const rows = await queryReplica<T>(text, params);
+  return rows[0] || null;
+}
+
+export async function closeReplicaPool(): Promise<void> {
+  await replicaPool?.end();
 }
 
 export { pool };

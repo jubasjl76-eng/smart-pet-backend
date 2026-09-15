@@ -11,13 +11,17 @@ const db = new PGlite();
 vi.mock('../database/index.js', () => ({
   query: async (t: string, p?: unknown[]) => (await db.query(t, p as any[])).rows,
   queryOne: async (t: string, p?: unknown[]) => (await db.query(t, p as any[])).rows[0] ?? null,
-  execute: async (t: string, p?: unknown[]) => { await db.query(t, p as any[]); },
+  execute: async (t: string, p?: unknown[]) => {
+    await db.query(t, p as any[]);
+  },
   pool: {},
 }));
 
-const { issueRefreshToken, rotateRefreshToken, revokeRefreshToken } = await import('../auth/tokens.js');
+const { issueRefreshToken, rotateRefreshToken, revokeRefreshToken } =
+  await import('../auth/tokens.js');
 const { createInvite, acceptInvite } = await import('../auth/invites.js');
-const { createPairing, claimByPairing, listOpenPairings } = await import('../breeder/devices.js');
+const { createPairing, claimByPairing, listOpenPairings, rotateDeviceCredentials } =
+  await import('../breeder/devices.js');
 const { runMigrations, listMigrations } = await import('../database/migrate.js');
 const { runSeed } = await import('../database/seed.js');
 
@@ -60,12 +64,14 @@ beforeAll(async () => {
   }
   await db.query(`INSERT INTO kennels (slug, name) VALUES ('home', 'Home')`);
   const u = await db.query<{ id: string }>(
-    `INSERT INTO users (email, password_hash, role, kennel_id) VALUES ('owner@x.io','x','owner','home') RETURNING id`
+    `INSERT INTO users (email, password_hash, role, kennel_id) VALUES ('owner@x.io','x','owner','home') RETURNING id`,
   );
   ownerId = u.rows[0].id;
 });
 
-afterAll(async () => { await db.close(); });
+afterAll(async () => {
+  await db.close();
+});
 
 describe('migration runner', () => {
   it('recorded 001 and re-running is a no-op', async () => {
@@ -77,9 +83,11 @@ describe('migration runner', () => {
   });
 
   it('created the phase-1 tables + columns', async () => {
-    const cols = (await db.query(
-      `SELECT column_name FROM information_schema.columns WHERE table_name = 'users'`
-    )).rows.map((r: any) => r.column_name);
+    const cols = (
+      await db.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'users'`,
+      )
+    ).rows.map((r: any) => r.column_name);
     expect(cols).toEqual(expect.arrayContaining(['active', 'kennel_id']));
     for (const t of ['refresh_tokens', 'user_invites', 'device_pairings']) {
       const r = await db.query(`SELECT to_regclass($1) AS t`, [t]);
@@ -99,7 +107,8 @@ describe('boot seed', () => {
     expect(second.rulesInstalled).toBe(0);
     expect(second.pensCreated).toBe(0);
 
-    const pens = (await db.query(`SELECT COUNT(*)::int n FROM pens WHERE kennel_id='home'`)).rows[0] as any;
+    const pens = (await db.query(`SELECT COUNT(*)::int n FROM pens WHERE kennel_id='home'`))
+      .rows[0] as any;
     expect(pens.n).toBe(4);
   });
 
@@ -107,7 +116,8 @@ describe('boot seed', () => {
     const r = await runSeed({ demo: true });
     expect(r.animalsCreated).toBe(2);
     expect(r.setupComplete).toBe(true);
-    const k = (await db.query(`SELECT setup_complete FROM kennels WHERE slug='home'`)).rows[0] as any;
+    const k = (await db.query(`SELECT setup_complete FROM kennels WHERE slug='home'`))
+      .rows[0] as any;
     expect(k.setup_complete).toBe(true);
     // idempotent
     expect((await runSeed({ demo: true })).animalsCreated).toBe(0);
@@ -136,8 +146,8 @@ describe('refresh tokens', () => {
 
   it('reusing a spent token revokes the whole family', async () => {
     const a = await issueRefreshToken(ownerId, 'vitest');
-    const r1 = await rotateRefreshToken(a.token);      // a → b
-    await rotateRefreshToken(r1!.refresh.token);        // b → c (b now valid-chain)
+    const r1 = await rotateRefreshToken(a.token); // a → b
+    await rotateRefreshToken(r1!.refresh.token); // b → c (b now valid-chain)
     // replay the original spent token → nukes the family, so c is dead too
     expect(await rotateRefreshToken(a.token)).toBeNull();
     // note: r1.refresh.token (b) was already spent by the b→c rotate
@@ -152,7 +162,12 @@ describe('refresh tokens', () => {
 
 describe('invites', () => {
   it('create → accept creates a staff user in the same kennel', async () => {
-    const inv = await createInvite({ email: 'Maria@x.io', role: 'staff', kennelId: 'home', invitedBy: ownerId });
+    const inv = await createInvite({
+      email: 'Maria@x.io',
+      role: 'staff',
+      kennelId: 'home',
+      invitedBy: ownerId,
+    });
     expect(inv.role).toBe('staff');
     const { user } = await acceptInvite(inv.token, 'Maria', 'secret1');
     expect(user.role).toBe('staff');
@@ -164,54 +179,131 @@ describe('invites', () => {
 
   it('rejects an existing email', async () => {
     await expect(
-      createInvite({ email: 'owner@x.io', role: 'staff', kennelId: 'home', invitedBy: ownerId })
+      createInvite({ email: 'owner@x.io', role: 'staff', kennelId: 'home', invitedBy: ownerId }),
     ).rejects.toThrow(/already exists/);
   });
 
   it('rejects an expired invite', async () => {
-    const inv = await createInvite({ email: 'late@x.io', role: 'staff', kennelId: 'home', invitedBy: ownerId });
-    await db.query(`UPDATE user_invites SET expires_at = NOW() - INTERVAL '1 day' WHERE token = $1`, [inv.token]);
+    const inv = await createInvite({
+      email: 'late@x.io',
+      role: 'staff',
+      kennelId: 'home',
+      invitedBy: ownerId,
+    });
+    await db.query(
+      `UPDATE user_invites SET expires_at = NOW() - INTERVAL '1 day' WHERE token = $1`,
+      [inv.token],
+    );
     await expect(acceptInvite(inv.token, 'Late', 'secret1')).rejects.toThrow(/expired/);
   });
 
   it('rejects a short password', async () => {
-    const inv = await createInvite({ email: 'weak@x.io', role: 'staff', kennelId: 'home', invitedBy: ownerId });
+    const inv = await createInvite({
+      email: 'weak@x.io',
+      role: 'staff',
+      kennelId: 'home',
+      invitedBy: ownerId,
+    });
     await expect(acceptInvite(inv.token, 'Weak', 'no')).rejects.toThrow(/6 characters/);
   });
 });
 
 describe('device pairing + claim', () => {
   it('pairing → claim binds the device, mints creds once, marks the pairing used', async () => {
-    const { code } = await createPairing({ kennelId: 'home', deviceType: 'feeder', suggestedName: 'Pen 3 feeder', createdBy: ownerId });
+    const { code } = await createPairing({
+      kennelId: 'home',
+      deviceType: 'feeder',
+      suggestedName: 'Pen 3 feeder',
+      createdBy: ownerId,
+    });
     expect(await listOpenPairings('home')).toHaveLength(1);
 
-    const result = await claimByPairing({ code, deviceId: 'feeder-77', kennelId: 'home', claimedBy: ownerId });
+    const result = await claimByPairing({
+      code,
+      deviceId: 'feeder-77',
+      kennelId: 'home',
+      claimedBy: ownerId,
+    });
     expect(result.device.device_type).toBe('feeder');
     expect(result.device.name).toBe('Pen 3 feeder');
     expect(result.mqtt.username).toBe('device:feeder-77');
     expect(result.mqtt.password).toMatch(/.{20,}/);
     expect(result.mqtt.topics.command).toBe('kennel/home/feeder/feeder-77/command');
 
-    const dev = await db.query<any>(`SELECT mqtt_password_hash, claim_code FROM devices WHERE device_id='feeder-77'`);
+    const dev = await db.query<any>(
+      `SELECT mqtt_password_hash, claim_code FROM devices WHERE device_id='feeder-77'`,
+    );
     expect(dev.rows[0].mqtt_password_hash).toBeTruthy();
     expect(dev.rows[0].claim_code).toBe(code);
     expect(await listOpenPairings('home')).toHaveLength(0);
 
-    await expect(claimByPairing({ code, deviceId: 'feeder-77', kennelId: 'home', claimedBy: ownerId }))
-      .rejects.toThrow(/already used/);
+    await expect(
+      claimByPairing({ code, deviceId: 'feeder-77', kennelId: 'home', claimedBy: ownerId }),
+    ).rejects.toThrow(/already used/);
   });
 
   it('rejects a code from another kennel', async () => {
     await db.query(`INSERT INTO kennels (slug, name) VALUES ('other','Other')`);
-    const { code } = await createPairing({ kennelId: 'other', deviceType: 'door', createdBy: ownerId });
-    await expect(claimByPairing({ code, deviceId: 'door-9', kennelId: 'home', claimedBy: ownerId }))
-      .rejects.toThrow(/another kennel/);
+    const { code } = await createPairing({
+      kennelId: 'other',
+      deviceType: 'door',
+      createdBy: ownerId,
+    });
+    await expect(
+      claimByPairing({ code, deviceId: 'door-9', kennelId: 'home', claimedBy: ownerId }),
+    ).rejects.toThrow(/another kennel/);
   });
 
   it('rejects an expired code', async () => {
-    const { code } = await createPairing({ kennelId: 'home', deviceType: 'scale', createdBy: ownerId });
-    await db.query(`UPDATE device_pairings SET expires_at = NOW() - INTERVAL '1 minute' WHERE code = $1`, [code]);
-    await expect(claimByPairing({ code, deviceId: 's1', kennelId: 'home', claimedBy: ownerId }))
-      .rejects.toThrow(/expired/);
+    const { code } = await createPairing({
+      kennelId: 'home',
+      deviceType: 'scale',
+      createdBy: ownerId,
+    });
+    await db.query(
+      `UPDATE device_pairings SET expires_at = NOW() - INTERVAL '1 minute' WHERE code = $1`,
+      [code],
+    );
+    await expect(
+      claimByPairing({ code, deviceId: 's1', kennelId: 'home', claimedBy: ownerId }),
+    ).rejects.toThrow(/expired/);
+  });
+});
+
+// Phase 21, A12 #20 — MQTT credential rotation. `publishCommand` isn't
+// mocked here (no `startFeederMqtt()` call in this test = no client), so it
+// rejects with "not connected" — rotateDeviceCredentials swallows that (a
+// device that's offline right now just doesn't get the live push) and still
+// returns the new credentials, which is exactly the behavior under test.
+describe('MQTT credential rotation', () => {
+  it('mints a new password, keeps the username, and updates the stored hash', async () => {
+    const { code } = await createPairing({
+      kennelId: 'home',
+      deviceType: 'feeder',
+      createdBy: ownerId,
+    });
+    const claimed = await claimByPairing({
+      code,
+      deviceId: 'feeder-rot-1',
+      kennelId: 'home',
+      claimedBy: ownerId,
+    });
+    const before = await db.query<any>(
+      `SELECT mqtt_password_hash FROM devices WHERE device_id='feeder-rot-1'`,
+    );
+
+    const rotated = await rotateDeviceCredentials('feeder-rot-1', 'home');
+    expect(rotated.mqtt.username).toBe(claimed.mqtt.username);
+    expect(rotated.mqtt.password).not.toBe(claimed.mqtt.password);
+    expect(rotated.mqtt.password).toMatch(/.{20,}/);
+
+    const after = await db.query<any>(
+      `SELECT mqtt_password_hash FROM devices WHERE device_id='feeder-rot-1'`,
+    );
+    expect(after.rows[0].mqtt_password_hash).not.toBe(before.rows[0].mqtt_password_hash);
+  });
+
+  it('rejects an unclaimed device', async () => {
+    await expect(rotateDeviceCredentials('never-claimed', 'home')).rejects.toThrow(/not found/);
   });
 });

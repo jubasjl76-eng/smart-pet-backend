@@ -7,28 +7,55 @@
  * same path once the collar firmware lands (Phase 9.4).
  */
 import { Router } from 'express';
+import { z } from '@jubasjl76-eng/shared';
 import { query, queryOne, execute } from '../../database/index.js';
-import { ah, bad, need } from '../http.js';
+import { ah, bad } from '../http.js';
+import { apiRoute } from '../../openapi/index.js';
 import { raiseException } from '../exceptions.js';
 import { evaluate, isEscape, type Zone } from '../logic/geofence.js';
 
 const router = Router();
+const T = ['breeder: geofencing'];
+const idParam = z.object({ id: z.string() });
 const KINDS = ['boundary', 'exclusion'];
 
 // ── Safe-zone CRUD ─────────────────────────────────────────────────────────
-router.get('/zones', ah(async (req, res) => {
-  const rows = await query(
-    `SELECT z.*, a.name AS animal_name
-       FROM safe_zones z LEFT JOIN animals a ON a.id = z.animal_id
-      WHERE z.kennel_id = $1 ORDER BY z.created_at`,
-    [req.kennelId],
-  );
-  res.json({ zones: rows });
-}));
+router.get(
+  '/zones',
+  apiRoute({
+    method: 'get', path: '/api/breeder/geo/zones', tags: T, secure: true,
+    summary: 'Safe zones for the kennel.',
+    responses: { 200: { description: 'ok', schema: z.object({ zones: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
+    const rows = await query(
+      `SELECT z.*, a.name AS animal_name
+         FROM safe_zones z LEFT JOIN animals a ON a.id = z.animal_id
+        WHERE z.kennel_id = $1 ORDER BY z.created_at`,
+      [req.kennelId],
+    );
+    res.json({ zones: rows });
+  }),
+);
 
-router.post('/zones', ah(async (req, res) => {
-  const err = need(req.body ?? {}, ['name', 'centerLat', 'centerLng']);
-  if (err) return bad(res, err);
+router.post(
+  '/zones',
+  apiRoute({
+    method: 'post', path: '/api/breeder/geo/zones', tags: T, secure: true,
+    summary: 'Create a safe zone (boundary or exclusion circle).',
+    request: {
+      body: z.object({
+        name: z.string().min(1),
+        centerLat: z.coerce.number(),
+        centerLng: z.coerce.number(),
+        kind: z.enum(['boundary', 'exclusion']).optional(),
+        radiusM: z.coerce.number().optional(),
+        animalId: z.string().nullable().optional(),
+      }),
+    },
+    responses: { 201: { description: 'created' } },
+  }),
+  ah(async (req, res) => {
   const b = req.body;
   const kind = KINDS.includes(b.kind) ? b.kind : 'boundary';
   const radius = Math.max(10, Math.floor(Number(b.radiusM) || 100));
@@ -40,7 +67,25 @@ router.post('/zones', ah(async (req, res) => {
   res.status(201).json({ zone: row });
 }));
 
-router.patch('/zones/:id', ah(async (req, res) => {
+router.patch(
+  '/zones/:id',
+  apiRoute({
+    method: 'patch', path: '/api/breeder/geo/zones/{id}', tags: T, secure: true,
+    summary: 'Update a safe zone (partial).',
+    request: {
+      params: idParam,
+      body: z.object({
+        name: z.string().optional(),
+        kind: z.enum(['boundary', 'exclusion']).optional(),
+        radiusM: z.coerce.number().optional(),
+        centerLat: z.coerce.number().optional(),
+        centerLng: z.coerce.number().optional(),
+        active: z.coerce.boolean().optional(),
+      }),
+    },
+    responses: { 200: { description: 'ok' }, 404: { description: 'not found' } },
+  }),
+  ah(async (req, res) => {
   const b = req.body ?? {};
   const sets: string[] = [];
   const params: unknown[] = [String(req.params.id), req.kennelId];
@@ -57,12 +102,22 @@ router.patch('/zones/:id', ah(async (req, res) => {
   );
   if (!row) return bad(res, 'zone not found', 404);
   res.json({ zone: row });
-}));
+}),
+);
 
-router.delete('/zones/:id', ah(async (req, res) => {
+router.delete(
+  '/zones/:id',
+  apiRoute({
+    method: 'delete', path: '/api/breeder/geo/zones/{id}', tags: T, secure: true,
+    summary: 'Delete a safe zone.',
+    request: { params: idParam },
+    responses: { 200: { description: 'ok' } },
+  }),
+  ah(async (req, res) => {
   await execute(`DELETE FROM safe_zones WHERE id = $1 AND kennel_id = $2`, [String(req.params.id), req.kennelId]);
   res.json({ ok: true });
-}));
+}),
+);
 
 // ── Position ingest + detection ────────────────────────────────────────────
 export interface Fix { animalId?: string; deviceId?: string; lat: number; lng: number; at?: string }
@@ -138,9 +193,23 @@ async function escapeAlert(kennelId: string, animalId: string, zone: Zone, what:
   });
 }
 
-router.post('/positions', ah(async (req, res) => {
-  const err = need(req.body ?? {}, ['lat', 'lng']);
-  if (err) return bad(res, err);
+router.post(
+  '/positions',
+  apiRoute({
+    method: 'post', path: '/api/breeder/geo/positions', tags: T, secure: true,
+    summary: 'Ingest a GPS fix (enter/exit detection + escape alerts).',
+    request: {
+      body: z.object({
+        lat: z.coerce.number(),
+        lng: z.coerce.number(),
+        animalId: z.string().optional(),
+        deviceId: z.string().optional(),
+        at: z.string().optional(),
+      }),
+    },
+    responses: { 201: { description: 'ingested' }, 404: { description: 'no animal for this fix' } },
+  }),
+  ah(async (req, res) => {
   if (!req.body.animalId && !req.body.deviceId) return bad(res, 'pass animalId or deviceId');
   try {
     const out = await ingestPosition(req.kennelId!, {
@@ -151,9 +220,17 @@ router.post('/positions', ah(async (req, res) => {
   } catch (e) {
     return bad(res, (e as Error).message, 404);
   }
-}));
+}),
+);
 
-router.get('/positions/latest', ah(async (req, res) => {
+router.get(
+  '/positions/latest',
+  apiRoute({
+    method: 'get', path: '/api/breeder/geo/positions/latest', tags: T, secure: true,
+    summary: 'Latest fix + inside-zone list per collared animal.',
+    responses: { 200: { description: 'ok', schema: z.object({ positions: z.array(z.record(z.string(), z.unknown())) }) } },
+  }),
+  ah(async (req, res) => {
   const rows = await query(
     `SELECT a.id AS animal_id, a.name, a.collar_device_id, a.last_lat, a.last_lng, a.last_fix_at,
             COALESCE(
@@ -165,6 +242,7 @@ router.get('/positions/latest', ah(async (req, res) => {
     [req.kennelId],
   );
   res.json({ positions: rows });
-}));
+}),
+);
 
 export default router;
